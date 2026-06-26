@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
+from sqlalchemy import select
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, date
@@ -92,13 +94,13 @@ async def preview_mill_data(line_no: int):
         return {"actual_mill_sep": 0.0, "actual_mill_rotor": 0.0, "actual_mill_dosing": 0.0, "actual_mill_air_flow": 0.0, "actual_mill_temp_in": 0.0, "actual_mill_temp_out": 0.0}
 
 @router.get("/mill/pending-jobs/{mill_line}") 
-def get_pending_jobs(mill_line: int, db: Session = Depends(database.get_db)):
-    return db.query(models.ExtruderJob).filter(
+async def get_pending_jobs(mill_line: int, db: AsyncSession = Depends(database.get_db)):
+    return (await db.execute(select(models.ExtruderJob).filter(
         models.ExtruderJob.status.in_(['IN_PROGRESS', 'WAITING_MILL'])
-    ).order_by(models.ExtruderJob.created_at.desc()).all() 
+    ).order_by(models.ExtruderJob.created_at.desc()))).scalars().all()
 
 @router.post("/mill/job/start")
-def start_mill_job(req: MillStartRequest, db: Session = Depends(database.get_db)):
+async def start_mill_job(req: MillStartRequest, db: AsyncSession = Depends(database.get_db)):
     try:
         new_job = models.MillJob(
             extruder_job_id=req.extruder_job_id,
@@ -112,26 +114,26 @@ def start_mill_job(req: MillStartRequest, db: Session = Depends(database.get_db)
         )
         db.add(new_job)
         
-        ex_job = db.query(models.ExtruderJob).filter(models.ExtruderJob.job_id == req.extruder_job_id).first()
+        ex_job = (await db.execute(select(models.ExtruderJob).filter(models.ExtruderJob.job_id == req.extruder_job_id))).scalars().first()
         if ex_job: ex_job.status = 'IN_PROCESS_MILL' 
             
-        db.commit()
-        db.refresh(new_job)
+        await db.commit()
+        await db.refresh(new_job)
         return {"job_id": new_job.job_id} # ✅ ส่งแค่ job_id กลับไป ป้องกัน Error จาก Pydantic
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(status_code=500, detail="ระบบขัดข้อง ไม่สามารถดึงงานได้")
 
 # ✅ API สำหรับสร้างงานด้วยมือ (อัปเกรดระบบ Rollback ถ้าเซฟพังให้ยกเลิกทั้งหมด)
 @router.post("/mill/job/start-manual")
-def start_manual_mill_job(req: MillManualStartRequest, db: Session = Depends(database.get_db)):
+async def start_manual_mill_job(req: MillManualStartRequest, db: AsyncSession = Depends(database.get_db)):
     po_formatted = req.po_no.strip().upper()
     
     # 1. เช็คความซ้ำซ้อน
-    existing_job = db.query(models.ExtruderJob).filter(
+    existing_job = (await db.execute(select(models.ExtruderJob).filter(
         models.ExtruderJob.po_no == po_formatted,
         models.ExtruderJob.status.in_(['IN_PROGRESS', 'WAITING_MILL', 'IN_PROCESS_MILL'])
-    ).first()
+    ))).scalars().first()
     
     if existing_job:
         raise HTTPException(status_code=400, detail=f"PO {po_formatted} นี้กำลังรันอยู่ในระบบแล้ว กรุณาค้นหาในบ่อรุมงาน")
@@ -149,7 +151,7 @@ def start_manual_mill_job(req: MillManualStartRequest, db: Session = Depends(dat
             status='IN_PROCESS_MILL'
         )
         db.add(mock_extruder_job)
-        db.flush() # ดันข้อมูลเข้าชั่วคราวเพื่อให้ได้ mock_extruder_job.job_id มาใช้ต่อ
+        await db.flush() # ดันข้อมูลเข้าชั่วคราวเพื่อให้ได้ mock_extruder_job.job_id มาใช้ต่อ
 
         # 3. สร้าง Mill Job โดยผูกกับหัวบิลตะกี้
         new_mill_job = models.MillJob(
@@ -165,24 +167,24 @@ def start_manual_mill_job(req: MillManualStartRequest, db: Session = Depends(dat
         db.add(new_mill_job)
         
         # 4. คอมมิทพร้อมกัน 2 ตารางรวดเดียว! สำเร็จคือผ่านทั้งคู่ พังคือยกเลิกทั้งคู่
-        db.commit()
-        db.refresh(new_mill_job)
+        await db.commit()
+        await db.refresh(new_mill_job)
         
         return {"job_id": new_mill_job.job_id} # ✅ ส่งแค่ job_id กลับไปเพื่อให้หน้าจอรับไปเปิด Workspace
         
     except Exception as e:
-        db.rollback() # ❌ ถ้าระหว่างบรรทัด 2-3 มีอะไรพัง ระบบจะเตะข้อมูลทิ้งหมด ไม่มี Ghost Data!
+        await db.rollback() # ❌ ถ้าระหว่างบรรทัด 2-3 มีอะไรพัง ระบบจะเตะข้อมูลทิ้งหมด ไม่มี Ghost Data!
         print(f"Manual Job Creation Error: {e}")
         raise HTTPException(status_code=500, detail="ระบบหลังบ้านขัดข้อง ไม่สามารถเปิดงานใหม่ได้")
 
 @router.get("/mill/job/active/{mill_line}")
-def get_active_mill_job(mill_line: int, db: Session = Depends(database.get_db)):
-    active_job = db.query(models.MillJob).filter(models.MillJob.mill_line == mill_line, models.MillJob.status == 'IN_PROGRESS').first()
+async def get_active_mill_job(mill_line: int, db: AsyncSession = Depends(database.get_db)):
+    active_job = (await db.execute(select(models.MillJob).filter(models.MillJob.mill_line == mill_line, models.MillJob.status == 'IN_PROGRESS'))).scalars().first()
     if not active_job: return None
 
-    ex_job = db.query(models.ExtruderJob).filter(models.ExtruderJob.job_id == active_job.extruder_job_id).first()
-    setup_logs = db.query(models.MillSetupLog).filter(models.MillSetupLog.job_id == active_job.job_id).order_by(models.MillSetupLog.id.desc()).all()
-    prod_logs = db.query(models.MillProductionLog).filter(models.MillProductionLog.job_id == active_job.job_id).order_by(models.MillProductionLog.id.desc()).all()
+    ex_job = (await db.execute(select(models.ExtruderJob).filter(models.ExtruderJob.job_id == active_job.extruder_job_id))).scalars().first()
+    setup_logs = (await db.execute(select(models.MillSetupLog).filter(models.MillSetupLog.job_id == active_job.job_id).order_by(models.MillSetupLog.id.desc()))).scalars().all()
+    prod_logs = (await db.execute(select(models.MillProductionLog).filter(models.MillProductionLog.job_id == active_job.job_id).order_by(models.MillProductionLog.id.desc()))).scalars().all()
 
     return {
         "job_id": active_job.job_id, 
@@ -201,12 +203,12 @@ def get_active_mill_job(mill_line: int, db: Session = Depends(database.get_db)):
     }
 
 @router.get("/mill/jobs/active/all")
-def get_all_active_mill_jobs(db: Session = Depends(database.get_db)):
-    active_jobs = db.query(models.MillJob).filter(models.MillJob.status == 'IN_PROGRESS').all()
+async def get_all_active_mill_jobs(db: AsyncSession = Depends(database.get_db)):
+    active_jobs = (await db.execute(select(models.MillJob).filter(models.MillJob.status == 'IN_PROGRESS'))).scalars().all()
     res = []
     seen_pos = set()
     for aj in active_jobs:
-        ex = db.query(models.ExtruderJob).filter(models.ExtruderJob.job_id == aj.extruder_job_id).first()
+        ex = (await db.execute(select(models.ExtruderJob).filter(models.ExtruderJob.job_id == aj.extruder_job_id))).scalars().first()
         if ex and ex.po_no not in seen_pos:
             seen_pos.add(ex.po_no)
             res.append({
@@ -220,13 +222,13 @@ def get_all_active_mill_jobs(db: Session = Depends(database.get_db)):
     return res
 
 @router.get("/mill/job/detail/{job_id}")
-def get_mill_job_detail(job_id: int, db: Session = Depends(database.get_db)):
-    aj = db.query(models.MillJob).filter(models.MillJob.job_id == job_id).first()
+async def get_mill_job_detail(job_id: int, db: AsyncSession = Depends(database.get_db)):
+    aj = (await db.execute(select(models.MillJob).filter(models.MillJob.job_id == job_id))).scalars().first()
     if not aj: raise HTTPException(404, "Job not found")
     
-    ex = db.query(models.ExtruderJob).filter(models.ExtruderJob.job_id == aj.extruder_job_id).first()
-    setup_logs = db.query(models.MillSetupLog).filter(models.MillSetupLog.job_id == job_id).order_by(models.MillSetupLog.id.desc()).all()
-    prod_logs = db.query(models.MillProductionLog).filter(models.MillProductionLog.job_id == job_id).order_by(models.MillProductionLog.id.desc()).all()
+    ex = (await db.execute(select(models.ExtruderJob).filter(models.ExtruderJob.job_id == aj.extruder_job_id))).scalars().first()
+    setup_logs = (await db.execute(select(models.MillSetupLog).filter(models.MillSetupLog.job_id == job_id).order_by(models.MillSetupLog.id.desc()))).scalars().all()
+    prod_logs = (await db.execute(select(models.MillProductionLog).filter(models.MillProductionLog.job_id == job_id).order_by(models.MillProductionLog.id.desc()))).scalars().all()
     
     return {
         "job_id": aj.job_id, "extruder_job_id": ex.job_id, "extruder_line": ex.extruder_line,
@@ -240,7 +242,7 @@ def get_mill_job_detail(job_id: int, db: Session = Depends(database.get_db)):
     }
 
 @router.post("/mill/log/setup")
-def add_mill_setup_log(req: MillSetupLogRequest, db: Session = Depends(database.get_db)):
+async def add_mill_setup_log(req: MillSetupLogRequest, db: AsyncSession = Depends(database.get_db)):
     diff = req.add_before_grind_a - req.add_after_grind_b
     log = models.MillSetupLog(
         job_id=req.job_id, mill_line=req.mill_line, setup_bin=req.setup_bin, setup_kg=req.setup_kg,
@@ -255,14 +257,14 @@ def add_mill_setup_log(req: MillSetupLogRequest, db: Session = Depends(database.
         feed_rate_kg_h=req.feed_rate_kg_h,
         remark_quality=req.remarks.get('quality'), remark_machine=req.remarks.get('machine'), remark_other=req.remarks.get('other')
     )
-    db.add(log); db.commit(); db.refresh(log)
+    db.add(log); await db.commit(); await db.refresh(log)
     return log
 
 @router.post("/mill/log/production")
-def add_mill_production_log(req: MillProductionLogRequest, db: Session = Depends(database.get_db)):
+async def add_mill_production_log(req: MillProductionLogRequest, db: AsyncSession = Depends(database.get_db)):
     diff = req.add_before_grind_a - req.add_after_grind_b
     box_count = (req.box_end - req.box_start) + 1
-    job = db.query(models.MillJob).filter(models.MillJob.job_id == req.job_id).first()
+    job = (await db.execute(select(models.MillJob).filter(models.MillJob.job_id == req.job_id))).scalars().first()
     total_weight = box_count * (job.box_weight if job else 20)
 
     log = models.MillProductionLog(
@@ -279,29 +281,29 @@ def add_mill_production_log(req: MillProductionLogRequest, db: Session = Depends
         feed_rate_kg_h=req.feed_rate_kg_h,
         remark_quality=req.remarks.get('quality'), remark_machine=req.remarks.get('machine'), remark_other=req.remarks.get('other')
     )
-    db.add(log); db.commit(); db.refresh(log)
+    db.add(log); await db.commit(); await db.refresh(log)
     return log
 
 @router.delete("/mill/log/setup/delete/{log_id}")
-def delete_mill_setup_log(log_id: int, db: Session = Depends(database.get_db)):
-    log = db.query(models.MillSetupLog).filter(models.MillSetupLog.id == log_id).first()
+async def delete_mill_setup_log(log_id: int, db: AsyncSession = Depends(database.get_db)):
+    log = (await db.execute(select(models.MillSetupLog).filter(models.MillSetupLog.id == log_id))).scalars().first()
     if not log: raise HTTPException(404, "Log not found")
-    db.delete(log); db.commit()
+    await db.delete(log); await db.commit()
     return {"msg": "Deleted"}
 
 @router.delete("/mill/log/production/delete/{log_id}")
-def delete_mill_production_log(log_id: int, db: Session = Depends(database.get_db)):
-    log = db.query(models.MillProductionLog).filter(models.MillProductionLog.id == log_id).first()
+async def delete_mill_production_log(log_id: int, db: AsyncSession = Depends(database.get_db)):
+    log = (await db.execute(select(models.MillProductionLog).filter(models.MillProductionLog.id == log_id))).scalars().first()
     if not log: raise HTTPException(404, "Log not found")
-    db.delete(log); db.commit()
+    await db.delete(log); await db.commit()
     return {"msg": "Deleted"}
 
 @router.post("/mill/job/finish/{job_id}")
-def finish_mill_job(job_id: int, db: Session = Depends(database.get_db)):
-    mill_job = db.query(models.MillJob).filter(models.MillJob.job_id == job_id).first()
+async def finish_mill_job(job_id: int, db: AsyncSession = Depends(database.get_db)):
+    mill_job = (await db.execute(select(models.MillJob).filter(models.MillJob.job_id == job_id))).scalars().first()
     if not mill_job: raise HTTPException(404, "Job not found")
     mill_job.status = 'COMPLETED'
-    ex_job = db.query(models.ExtruderJob).filter(models.ExtruderJob.job_id == mill_job.extruder_job_id).first()
+    ex_job = (await db.execute(select(models.ExtruderJob).filter(models.ExtruderJob.job_id == mill_job.extruder_job_id))).scalars().first()
     if ex_job: ex_job.status = 'COMPLETED'
-    db.commit()
+    await db.commit()
     return {"msg": "Job Finished"}

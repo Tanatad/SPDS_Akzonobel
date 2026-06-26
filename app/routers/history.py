@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy import select
 from sqlalchemy import desc, or_, func
 from typing import Optional
 import math
@@ -10,7 +12,7 @@ router = APIRouter()
 
 # ✅ API หลักสำหรับ History Page (รองรับ Pagination & Search และแก้บั๊ก 500 แล้ว)
 @router.get("/history/query")
-def query_history(
+async def query_history(
     page: int = 1,
     limit: int = 20,
     search: Optional[str] = None,
@@ -18,10 +20,10 @@ def query_history(
     end_date: Optional[str] = None,
     extruder_line: Optional[str] = None,
     mill_line: Optional[str] = None,
-    db: Session = Depends(database.get_db)
+    db: AsyncSession = Depends(database.get_db)
 ):
     # 1. Base Query
-    query = db.query(models.ExtruderJob)
+    query_stmt = select(models.ExtruderJob)
     
     # Join MillJob for filtering ONLY (ไม่ต้อง load ข้อมูลตรงนี้)
     query = query.outerjoin(models.MillJob, models.ExtruderJob.job_id == models.MillJob.extruder_job_id)
@@ -51,14 +53,14 @@ def query_history(
 
     # 4. Fetch Extruder Data (🚀 เปลี่ยนเป็น selectinload)
     # selectinload จะยิง Query แยก 1 ครั้งเพื่อดึงลูกๆ ทั้งหมด (เร็วกว่า joinedload ที่ join ตารางใหญ่ๆ)
-    jobs = query.options(
+    jobs = (await db.execute(query.options(
         selectinload(models.ExtruderJob.warmups),
         selectinload(models.ExtruderJob.setups),
         selectinload(models.ExtruderJob.productions)
     ).order_by(desc(models.ExtruderJob.created_at)) \
      .offset((page - 1) * limit) \
      .limit(limit) \
-     .all()
+     )).unique().scalars().all()
 
 # 5. 🚀 Fetch Mill Data (คืนค่าโครงสร้างดั้งเดิม เพื่อไม่ให้หน้า History หลักพัง)
     mill_map = {}
@@ -66,14 +68,14 @@ def query_history(
         job_ids = [job.job_id for job in jobs]
         
         # ดึง Mill Job ทั้งหมดที่เกี่ยวข้องใน "ครั้งเดียว"
-        mill_jobs = db.query(models.MillJob).filter(models.MillJob.extruder_job_id.in_(job_ids)).all()
+        mill_jobs = (await db.execute(select(models.MillJob).filter(models.MillJob.extruder_job_id.in_(job_ids)))).scalars().all()
         
         if mill_jobs:
             mill_job_ids = [m.job_id for m in mill_jobs]
             
             # ดึง Logs ทั้ง 2 แบบของ Mill
-            mill_setups = db.query(models.MillSetupLog).filter(models.MillSetupLog.job_id.in_(mill_job_ids)).all()
-            mill_prods = db.query(models.MillProductionLog).filter(models.MillProductionLog.job_id.in_(mill_job_ids)).all()
+            mill_setups = (await db.execute(select(models.MillSetupLog).filter(models.MillSetupLog.job_id.in_(mill_job_ids)))).scalars().all()
+            mill_prods = (await db.execute(select(models.MillProductionLog).filter(models.MillProductionLog.job_id.in_(mill_job_ids)))).scalars().all()
             
             # จับมัดรวมกันตาม ID ของ Mill เหมือนเวอร์ชันแรกสุดเป๊ะๆ
             logs_map = defaultdict(list)
@@ -138,23 +140,23 @@ def query_history(
 # --- (Optional) เก็บอันเก่าไว้เผื่อใช้อ้างอิง แต่ Frontend ไม่ได้เรียกใช้แล้ว ---
 
 @router.get("/history/extruder")
-def get_extruder_history(limit: int = 50, db: Session = Depends(database.get_db)):
-    jobs = db.query(models.ExtruderJob).options(
+async def get_extruder_history(limit: int = 50, db: AsyncSession = Depends(database.get_db)):
+    jobs = (await db.execute(select(models.ExtruderJob).options(
         joinedload(models.ExtruderJob.warmups),
         joinedload(models.ExtruderJob.setups),
         joinedload(models.ExtruderJob.productions)
-    ).order_by(desc(models.ExtruderJob.created_at)).limit(limit).all()
+    ).order_by(desc(models.ExtruderJob.created_at)).limit(limit))).unique().scalars().all()
     return jobs
 
 @router.get("/history/mill")
-def get_mill_history(limit: int = 50, db: Session = Depends(database.get_db)):
-    jobs = db.query(
+async def get_mill_history(limit: int = 50, db: AsyncSession = Depends(database.get_db)):
+    jobs = (await db.execute(select(
         models.MillJob, 
         models.ExtruderJob.po_no, 
         models.ExtruderJob.product_code
     ).join(
         models.ExtruderJob, models.MillJob.extruder_job_id == models.ExtruderJob.job_id
-    ).order_by(desc(models.MillJob.created_at)).limit(limit).all()
+    ).order_by(desc(models.MillJob.created_at)).limit(limit))).all()
 
     results = []
     for mill_job, po, code in jobs:
@@ -167,16 +169,16 @@ def get_mill_history(limit: int = 50, db: Session = Depends(database.get_db)):
     return results
 
 @router.get("/history/all")
-def get_all_history(limit: int = 100, db: Session = Depends(database.get_db)):
-    jobs = db.query(models.ExtruderJob).options(
+async def get_all_history(limit: int = 100, db: AsyncSession = Depends(database.get_db)):
+    jobs = (await db.execute(select(models.ExtruderJob).options(
         joinedload(models.ExtruderJob.warmups),
         joinedload(models.ExtruderJob.setups),
         joinedload(models.ExtruderJob.productions),
-    ).order_by(desc(models.ExtruderJob.created_at)).limit(limit).all()
+    ).order_by(desc(models.ExtruderJob.created_at)).limit(limit))).unique().scalars().all()
 
     results = []
     for job in jobs:
-        mill_job = db.query(models.MillJob).filter(models.MillJob.extruder_job_id == job.job_id).first()
+        mill_job = (await db.execute(select(models.MillJob).filter(models.MillJob.extruder_job_id == job.job_id))).scalars().first()
         job_dict = job.__dict__.copy()
         job_dict.pop('_sa_instance_state', None)
         if mill_job:
