@@ -1,5 +1,7 @@
 // app/dashboard/extruder/components/ExtruderWorkspace.tsx
 import { useState, useEffect } from 'react';
+import { useKepwareWebSocket } from '@/lib/hooks/useKepwareWebSocket';
+import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import api from '@/lib/api';
 import { 
@@ -52,6 +54,13 @@ const QcCheckbox = ({ label, checked, onChange }: any) => (
 
 // --- Main Component ---
 export default function ExtruderWorkspace({ activeJob, selectedLine, logs, setLogs }: any) {
+  useKepwareWebSocket('extruder', selectedLine);
+  const { data: liveData } = useQuery({
+    queryKey: ['kepwareLive', 'extruder', selectedLine],
+    initialData: null as any
+  });
+
+
   const [activeTab, setActiveTab] = useState<'WARMUP' | 'SETUP' | 'PRODUCTION'>('WARMUP');
   const [loading, setLoading] = useState(false); 
   const [isSaving, setIsSaving] = useState(false);
@@ -65,6 +74,42 @@ export default function ExtruderWorkspace({ activeJob, selectedLine, logs, setLo
   const formWarmup = useForm({ defaultValues: defaultWarmup });
   const formSetup = useForm({ defaultValues: defaultSetup });
   const formProd = useForm({ defaultValues: defaultProd });
+
+  // Automatically update the form fields with live data
+  useEffect(() => {
+    if (liveData && !loading) {
+      const fmt = (v: any) => (v !== undefined && v !== null) ? Number(v).toFixed(2) : '';
+      if (activeTab === 'WARMUP') {
+        formWarmup.setValue('ht1', fmt(liveData.actual_ht1));
+        formWarmup.setValue('ht2', fmt(liveData.actual_ht2));
+        formWarmup.setValue('ht3', fmt(liveData.actual_ht3));
+        formWarmup.setValue('ht4', fmt(liveData.actual_ht4));
+        formWarmup.setValue('ht5', fmt(liveData.actual_ht5));
+      } else {
+        const setVal = activeTab === 'SETUP' ? (k: any, v: any) => formSetup.setValue(k, v) : (k: any, v: any) => formProd.setValue(k, v);
+        setVal('act_screw', fmt(liveData.actual_screw_rpm));
+        setVal('act_torque', fmt(liveData.actual_torque_pct));
+        setVal('act_side', fmt(liveData.actual_side_feed_pct));
+        setVal('act_ht1', fmt(liveData.actual_ht1));
+        setVal('act_ht2', fmt(liveData.actual_ht2));
+        setVal('act_ht3', fmt(liveData.actual_ht3));
+        setVal('act_ht4', fmt(liveData.actual_ht4));
+        setVal('act_ht5', fmt(liveData.actual_ht5));
+        setVal('w_temp', fmt(liveData.barrel_water_temp));
+        if (AUTO_FLOW_MACHINES.includes(selectedLine)) setVal('flow', fmt(liveData.barrel_water_flow));
+
+        // Auto-fill standard values if empty
+        const p = activeTab === 'SETUP' ? formSetup.getValues() : formProd.getValues();
+        if (!p.screw) setVal('screw', fmt(liveData.std_screw_rpm));
+        if (!p.side) setVal('side', fmt(liveData.std_side_feed_pct));
+        if (!p.ht1) setVal('ht1', fmt(liveData.std_ht1));
+        if (!p.ht2) setVal('ht2', fmt(liveData.std_ht2));
+        if (!p.ht3) setVal('ht3', fmt(liveData.std_ht3));
+        if (!p.ht4) setVal('ht4', fmt(liveData.std_ht4));
+        if (!p.ht5) setVal('ht5', fmt(liveData.std_ht5));
+      }
+    }
+  }, [liveData, activeTab, selectedLine]);
 
   // ดึง watch มาใช้ตาม Tab
   const fSetup = formSetup.watch();
@@ -222,7 +267,7 @@ export default function ExtruderWorkspace({ activeJob, selectedLine, logs, setLo
                             {activeTab === 'WARMUP' ? <div className="p-1.5 bg-orange-100 rounded-lg text-orange-600"><Thermometer size={24}/></div> : activeTab === 'SETUP' ? <div className="p-1.5 bg-purple-100 rounded-lg text-purple-600"><Settings size={24}/></div> : <div className="p-1.5 bg-blue-100 rounded-lg text-blue-600"><Factory size={24}/></div>}
                             {activeTab === 'WARMUP' ? 'Warm Up Data' : activeTab === 'SETUP' ? 'Setup Parameters' : 'Production Log'}
                         </h3>
-                        <button type="button" onClick={handleReadMachine} disabled={loading} className="text-sm font-bold bg-slate-100 border border-slate-300 text-slate-700 px-4 py-2.5 rounded-xl flex items-center hover:bg-slate-200 active:scale-95">{loading ? <RefreshCw className="animate-spin w-4 h-4 mr-2"/> : <Activity className="w-4 h-4 mr-2"/>} Read Machine</button>
+                        <div className="text-sm font-bold bg-green-50 border border-green-200 text-green-700 px-4 py-2.5 rounded-xl flex items-center"><div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse mr-2"></div>Live Data Active</div>
                     </div>
 
                     {/* ✅ เลือกว่าจะใช้ handleSubmit ของฟอร์มไหน */}
