@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
 // Fallback to determine base WS URL
@@ -19,6 +19,7 @@ export const useKepwareWebSocket = (type: 'extruder' | 'mill', lineNo: number | 
   const queryClient = useQueryClient();
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimeout = useRef<NodeJS.Timeout | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
     if (!lineNo) return;
@@ -27,6 +28,11 @@ export const useKepwareWebSocket = (type: 'extruder' | 'mill', lineNo: number | 
       const wsUrl = `${getWsUrl()}/ws/${type}/${lineNo}`;
       console.log(`🔌 Connecting to Kepware WS: ${wsUrl}`);
       ws.current = new WebSocket(wsUrl);
+
+
+      ws.current.onopen = () => {
+        setIsConnected(true);
+      };
 
       ws.current.onmessage = (event) => {
         try {
@@ -40,15 +46,17 @@ export const useKepwareWebSocket = (type: 'extruder' | 'mill', lineNo: number | 
       };
 
       ws.current.onclose = () => {
+        setIsConnected(false);
         console.warn("⚠️ Kepware WS disconnected. Reconnecting in 3 seconds...");
         // Auto-reconnect logic
         reconnectTimeout.current = setTimeout(connect, 3000);
       };
 
       ws.current.onerror = (error) => {
-        console.error("❌ Kepware WS error:", error);
+        console.error("❌ Kepware WS connection failed, attempting to reconnect...");
         ws.current?.close(); // Trigger onclose
       };
+
     };
 
     connect();
@@ -62,4 +70,6 @@ export const useKepwareWebSocket = (type: 'extruder' | 'mill', lineNo: number | 
       }
     };
   }, [type, lineNo, queryClient]);
+
+  return { isConnected };
 };

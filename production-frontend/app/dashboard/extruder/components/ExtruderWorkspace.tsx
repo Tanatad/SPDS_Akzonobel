@@ -54,7 +54,7 @@ const QcCheckbox = ({ label, checked, onChange }: any) => (
 
 // --- Main Component ---
 export default function ExtruderWorkspace({ activeJob, selectedLine, logs, setLogs }: any) {
-  useKepwareWebSocket('extruder', selectedLine);
+  const { isConnected } = useKepwareWebSocket('extruder', selectedLine);
   const { data: liveData } = useQuery({
     queryKey: ['kepwareLive', 'extruder', selectedLine],
     initialData: null as any,
@@ -232,7 +232,7 @@ export default function ExtruderWorkspace({ activeJob, selectedLine, logs, setLo
                             {activeTab === 'WARMUP' ? <div className="p-1.5 bg-orange-100 rounded-lg text-orange-600"><Thermometer size={24}/></div> : activeTab === 'SETUP' ? <div className="p-1.5 bg-purple-100 rounded-lg text-purple-600"><Settings size={24}/></div> : <div className="p-1.5 bg-blue-100 rounded-lg text-blue-600"><Factory size={24}/></div>}
                             {activeTab === 'WARMUP' ? 'Warm Up Data' : activeTab === 'SETUP' ? 'Setup Parameters' : 'Production Log'}
                         </h3>
-                        <button type="button" onClick={handleReadMachine} disabled={loading || !liveData} className="text-sm font-bold bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2.5 rounded-xl flex items-center hover:bg-blue-100 active:scale-95 transition-all"><div className={`w-2.5 h-2.5 rounded-full mr-2 ${liveData ? "bg-green-500 animate-pulse" : "bg-red-500"}`}></div>{loading ? <RefreshCw className="animate-spin w-4 h-4 mr-2"/> : <Activity className="w-4 h-4 mr-2"/>} Fetch Data</button>
+                        <button type="button" onClick={handleReadMachine} disabled={loading || !isConnected} className="text-sm font-bold bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2.5 rounded-xl flex items-center hover:bg-blue-100 active:scale-95 transition-all"><div className={`w-2.5 h-2.5 rounded-full mr-2 ${isConnected ? "bg-green-500 animate-pulse" : "bg-red-500"}`}></div>{loading ? <RefreshCw className="animate-spin w-4 h-4 mr-2"/> : <Activity className="w-4 h-4 mr-2"/>} Fetch Data</button>
                     </div>
 
                     {/* ✅ เลือกว่าจะใช้ handleSubmit ของฟอร์มไหน */}

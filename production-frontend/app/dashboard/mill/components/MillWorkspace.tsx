@@ -37,7 +37,7 @@ const SectionTitle = ({ icon, title, color = "text-slate-700" }: any) => (
 );
 
 export default function MillWorkspace({ activeJob, millLine, isOwner, onFinish, onLeave, onSwitchLine, refetchActiveJob }: any) {
-  useKepwareWebSocket('mill', millLine);
+  const { isConnected } = useKepwareWebSocket('mill', millLine);
   const { data: liveData } = useQuery({
     queryKey: ['kepwareLive', 'mill', millLine],
     initialData: null as any,
@@ -291,7 +291,7 @@ export default function MillWorkspace({ activeJob, millLine, isOwner, onFinish, 
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mt-6">
                     <div className="flex justify-between items-center mb-6">
                         <SectionTitle icon={<Settings size={20}/>} title="Machine & Quality" />
-                        <button type="button" onClick={handleReadMachine} disabled={isMachineReading || !liveData} className="text-xs font-bold bg-blue-50 hover:bg-blue-100 px-4 py-2.5 rounded-xl flex items-center transition-all active:scale-95 text-blue-700 border border-blue-200"><div className={`w-2 h-2 rounded-full mr-2 ${liveData ? "bg-green-500 animate-pulse" : "bg-red-500"}`}></div>{isMachineReading ? <RefreshCw className="animate-spin w-3.5 h-3.5 mr-2"/> : <RefreshCw className="w-3.5 h-3.5 mr-2"/>} Fetch Data</button>
+                        <button type="button" onClick={handleReadMachine} disabled={isMachineReading || !isConnected} className="text-xs font-bold bg-blue-50 hover:bg-blue-100 px-4 py-2.5 rounded-xl flex items-center transition-all active:scale-95 text-blue-700 border border-blue-200"><div className={`w-2 h-2 rounded-full mr-2 ${isConnected ? "bg-green-500 animate-pulse" : "bg-red-500"}`}></div>{isMachineReading ? <RefreshCw className="animate-spin w-3.5 h-3.5 mr-2"/> : <RefreshCw className="w-3.5 h-3.5 mr-2"/>} Fetch Data</button>
                     </div>
                     <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-8">
                         <MachineParam label="Feeder" val={currentFormWatch.feeder} unit="rpm"/>
