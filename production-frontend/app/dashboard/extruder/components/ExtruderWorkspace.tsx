@@ -1,7 +1,7 @@
 // app/dashboard/extruder/components/ExtruderWorkspace.tsx
 import { useState, useEffect } from 'react';
 import { useKepwareWebSocket } from '@/lib/hooks/useKepwareWebSocket';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import api from '@/lib/api';
 import { 
@@ -57,10 +57,13 @@ export default function ExtruderWorkspace({ activeJob, selectedLine, logs, setLo
   useKepwareWebSocket('extruder', selectedLine);
   const { data: liveData } = useQuery({
     queryKey: ['kepwareLive', 'extruder', selectedLine],
-    initialData: null as any
+    initialData: null as any,
+    queryFn: () => null,
+    staleTime: Infinity
   });
 
 
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'WARMUP' | 'SETUP' | 'PRODUCTION'>('WARMUP');
   const [loading, setLoading] = useState(false); 
   const [isSaving, setIsSaving] = useState(false);
@@ -75,41 +78,6 @@ export default function ExtruderWorkspace({ activeJob, selectedLine, logs, setLo
   const formSetup = useForm({ defaultValues: defaultSetup });
   const formProd = useForm({ defaultValues: defaultProd });
 
-  // Automatically update the form fields with live data
-  useEffect(() => {
-    if (liveData && !loading) {
-      const fmt = (v: any) => (v !== undefined && v !== null) ? Number(v).toFixed(2) : '';
-      if (activeTab === 'WARMUP') {
-        formWarmup.setValue('ht1', fmt(liveData.actual_ht1));
-        formWarmup.setValue('ht2', fmt(liveData.actual_ht2));
-        formWarmup.setValue('ht3', fmt(liveData.actual_ht3));
-        formWarmup.setValue('ht4', fmt(liveData.actual_ht4));
-        formWarmup.setValue('ht5', fmt(liveData.actual_ht5));
-      } else {
-        const setVal = activeTab === 'SETUP' ? (k: any, v: any) => formSetup.setValue(k, v) : (k: any, v: any) => formProd.setValue(k, v);
-        setVal('act_screw', fmt(liveData.actual_screw_rpm));
-        setVal('act_torque', fmt(liveData.actual_torque_pct));
-        setVal('act_side', fmt(liveData.actual_side_feed_pct));
-        setVal('act_ht1', fmt(liveData.actual_ht1));
-        setVal('act_ht2', fmt(liveData.actual_ht2));
-        setVal('act_ht3', fmt(liveData.actual_ht3));
-        setVal('act_ht4', fmt(liveData.actual_ht4));
-        setVal('act_ht5', fmt(liveData.actual_ht5));
-        setVal('w_temp', fmt(liveData.barrel_water_temp));
-        if (AUTO_FLOW_MACHINES.includes(selectedLine)) setVal('flow', fmt(liveData.barrel_water_flow));
-
-        // Auto-fill standard values if empty
-        const p = activeTab === 'SETUP' ? formSetup.getValues() : formProd.getValues();
-        if (!p.screw) setVal('screw', fmt(liveData.std_screw_rpm));
-        if (!p.side) setVal('side', fmt(liveData.std_side_feed_pct));
-        if (!p.ht1) setVal('ht1', fmt(liveData.std_ht1));
-        if (!p.ht2) setVal('ht2', fmt(liveData.std_ht2));
-        if (!p.ht3) setVal('ht3', fmt(liveData.std_ht3));
-        if (!p.ht4) setVal('ht4', fmt(liveData.std_ht4));
-        if (!p.ht5) setVal('ht5', fmt(liveData.std_ht5));
-      }
-    }
-  }, [liveData, activeTab, selectedLine]);
 
   // ดึง watch มาใช้ตาม Tab
   const fSetup = formSetup.watch();
@@ -120,57 +88,54 @@ export default function ExtruderWorkspace({ activeJob, selectedLine, logs, setLo
   const reg = (activeTab === 'SETUP' ? formSetup.register : activeTab === 'PRODUCTION' ? formProd.register : formWarmup.register) as any;
   const setVal = (activeTab === 'SETUP' ? formSetup.setValue : activeTab === 'PRODUCTION' ? formProd.setValue : formWarmup.setValue) as any;
 
+
+  const handleReadMachine = () => {
+    setLoading(true);
+    // Grab latest WS payload from React Query Cache directly
+    const cachedData = queryClient.getQueryData(['kepwareLive', 'extruder', selectedLine]) as any;
+
+    if (cachedData) {
+      const fmt = (v: any) => (v !== undefined && v !== null) ? Number(v).toFixed(2) : '';
+
+      if (activeTab === 'WARMUP') {
+        formWarmup.setValue('ht1', fmt(cachedData.actual_ht1));
+        formWarmup.setValue('ht2', fmt(cachedData.actual_ht2));
+        formWarmup.setValue('ht3', fmt(cachedData.actual_ht3));
+        formWarmup.setValue('ht4', fmt(cachedData.actual_ht4));
+        formWarmup.setValue('ht5', fmt(cachedData.actual_ht5));
+      } else {
+        const setVal = activeTab === 'SETUP' ? (k: any, v: any) => formSetup.setValue(k, v) : (k: any, v: any) => formProd.setValue(k, v);
+        setVal('act_screw', fmt(cachedData.actual_screw_rpm));
+        setVal('act_torque', fmt(cachedData.actual_torque_pct));
+        setVal('act_side', fmt(cachedData.actual_side_feed_pct));
+        setVal('act_ht1', fmt(cachedData.actual_ht1));
+        setVal('act_ht2', fmt(cachedData.actual_ht2));
+        setVal('act_ht3', fmt(cachedData.actual_ht3));
+        setVal('act_ht4', fmt(cachedData.actual_ht4));
+        setVal('act_ht5', fmt(cachedData.actual_ht5));
+        setVal('w_temp', fmt(cachedData.barrel_water_temp));
+        if (AUTO_FLOW_MACHINES.includes(selectedLine)) setVal('flow', fmt(cachedData.barrel_water_flow));
+
+        // Auto-fill standard values if empty
+        const p = activeTab === 'SETUP' ? formSetup.getValues() : formProd.getValues();
+        if (!p.screw) setVal('screw', fmt(cachedData.std_screw_rpm));
+        if (!p.side) setVal('side', fmt(cachedData.std_side_feed_pct));
+        if (!p.ht1) setVal('ht1', fmt(cachedData.std_ht1));
+        if (!p.ht2) setVal('ht2', fmt(cachedData.std_ht2));
+        if (!p.ht3) setVal('ht3', fmt(cachedData.std_ht3));
+        if (!p.ht4) setVal('ht4', fmt(cachedData.std_ht4));
+        if (!p.ht5) setVal('ht5', fmt(cachedData.std_ht5));
+      }
+    }
+    setTimeout(() => setLoading(false), 500); // UI feedback
+  };
+
   const handleSetNow = (field: 'start' | 'stop') => {
     const now = new Date();
     const dt = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     setVal(field, dt);
   };
 
-    const handleReadMachine = async () => {
-        setLoading(true);
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); 
-        try {
-        const res = await api.get(`/preview/extruder/${selectedLine}`, { signal: controller.signal });
-        clearTimeout(timeoutId);
-        const d = res.data;
-        const fmt = (v: any) => (v !== undefined && v !== null) ? Number(v).toFixed(2) : '';
-
-        if (activeTab === 'WARMUP') {
-            formWarmup.setValue('ht1', fmt(d.actual_ht1));
-            formWarmup.setValue('ht2', fmt(d.actual_ht2));
-            formWarmup.setValue('ht3', fmt(d.actual_ht3));
-            formWarmup.setValue('ht4', fmt(d.actual_ht4));
-            formWarmup.setValue('ht5', fmt(d.actual_ht5));
-        } else {
-            // ✅ ใช้ setVal ที่เราประกาศไว้ด้านบน (ซึ่งจัดการ Bypass TypeScript ไว้แล้ว)
-            // ✅ ใช้ getValues แยกตามเงื่อนไขเพื่อดึงค่าปัจจุบันมาเช็ค
-            const p = activeTab === 'SETUP' ? formSetup.getValues() : formProd.getValues();
-            
-            setVal('act_screw', fmt(d.actual_screw_rpm));
-            setVal('act_torque', fmt(d.actual_torque_pct));
-            setVal('act_side', fmt(d.actual_side_feed_pct));
-            setVal('act_ht1', fmt(d.actual_ht1));
-            setVal('act_ht2', fmt(d.actual_ht2));
-            setVal('act_ht3', fmt(d.actual_ht3));
-            setVal('act_ht4', fmt(d.actual_ht4));
-            setVal('act_ht5', fmt(d.actual_ht5));
-            setVal('w_temp', fmt(d.barrel_water_temp));
-            
-            setVal('screw', p.screw || fmt(d.std_screw_rpm));
-            setVal('side', p.side || fmt(d.std_side_feed_pct));
-            setVal('ht1', p.ht1 || fmt(d.std_ht1));
-            setVal('ht2', p.ht2 || fmt(d.std_ht2));
-            setVal('ht3', p.ht3 || fmt(d.std_ht3));
-            setVal('ht4', p.ht4 || fmt(d.std_ht4));
-            setVal('ht5', p.ht5 || fmt(d.std_ht5));
-            
-            if (AUTO_FLOW_MACHINES.includes(selectedLine) && d.barrel_water_flow) {
-                setVal('flow', fmt(d.barrel_water_flow));
-            }
-        }
-        } catch (err: any) { alert(err.name === 'AbortError' ? "Timeout" : "Read Error"); } finally { setLoading(false); }
-    };
 
   const onSubmit = async (data: any) => {
     if (activeTab === 'WARMUP' && (!data.start || !data.stop)) return alert("Please enter time.");
@@ -267,7 +232,7 @@ export default function ExtruderWorkspace({ activeJob, selectedLine, logs, setLo
                             {activeTab === 'WARMUP' ? <div className="p-1.5 bg-orange-100 rounded-lg text-orange-600"><Thermometer size={24}/></div> : activeTab === 'SETUP' ? <div className="p-1.5 bg-purple-100 rounded-lg text-purple-600"><Settings size={24}/></div> : <div className="p-1.5 bg-blue-100 rounded-lg text-blue-600"><Factory size={24}/></div>}
                             {activeTab === 'WARMUP' ? 'Warm Up Data' : activeTab === 'SETUP' ? 'Setup Parameters' : 'Production Log'}
                         </h3>
-                        <div className="text-sm font-bold bg-green-50 border border-green-200 text-green-700 px-4 py-2.5 rounded-xl flex items-center"><div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse mr-2"></div>Live Data Active</div>
+                        <button type="button" onClick={handleReadMachine} disabled={loading || !liveData} className="text-sm font-bold bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2.5 rounded-xl flex items-center hover:bg-blue-100 active:scale-95 transition-all"><div className={`w-2.5 h-2.5 rounded-full mr-2 ${liveData ? "bg-green-500 animate-pulse" : "bg-red-500"}`}></div>{loading ? <RefreshCw className="animate-spin w-4 h-4 mr-2"/> : <Activity className="w-4 h-4 mr-2"/>} Fetch Data</button>
                     </div>
 
                     {/* ✅ เลือกว่าจะใช้ handleSubmit ของฟอร์มไหน */}

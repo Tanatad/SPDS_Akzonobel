@@ -5,13 +5,8 @@ import { useQueryClient } from '@tanstack/react-query';
 const getWsUrl = () => {
   if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
 
-  // Try to derive from Next.js hostname in browser
   if (typeof window !== 'undefined') {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // If running in development with proxy, connect to same host/port and the proxy will handle it
-    // Wait, the next.config.ts proxy is for HTTP (/api/v1). WebSocket proxying in Next.js dev server can be tricky.
-    // It's safer to connect directly to the backend if we know where it is, or configure Next.js to proxy WS.
-    // Assuming backend is at 127.0.0.1:8000 for local dev
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
        return `ws://127.0.0.1:8000/api/v1`;
     }

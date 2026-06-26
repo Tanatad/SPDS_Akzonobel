@@ -26,12 +26,12 @@ async def query_history(
     query_stmt = select(models.ExtruderJob)
     
     # Join MillJob for filtering ONLY (ไม่ต้อง load ข้อมูลตรงนี้)
-    query = query.outerjoin(models.MillJob, models.ExtruderJob.job_id == models.MillJob.extruder_job_id)
+    query_stmt = query_stmt.outerjoin(models.MillJob, models.ExtruderJob.job_id == models.MillJob.extruder_job_id)
 
     # 2. Filters
     if search:
         search_term = f"%{search}%"
-        query = query.filter(
+        query_stmt = query_stmt.filter(
             or_(
                 models.ExtruderJob.po_no.ilike(search_term),
                 models.ExtruderJob.product_code.ilike(search_term),
@@ -39,21 +39,21 @@ async def query_history(
             )
         )
     if start_date:
-        query = query.filter(models.ExtruderJob.created_at >= start_date)
+        query_stmt = query_stmt.filter(models.ExtruderJob.created_at >= start_date)
     if end_date:
-        query = query.filter(models.ExtruderJob.created_at <= f"{end_date} 23:59:59")
+        query_stmt = query_stmt.filter(models.ExtruderJob.created_at <= f"{end_date} 23:59:59")
     if extruder_line and extruder_line.isdigit():
-        query = query.filter(models.ExtruderJob.extruder_line == int(extruder_line))
+        query_stmt = query_stmt.filter(models.ExtruderJob.extruder_line == int(extruder_line))
     if mill_line and mill_line.isdigit():
-        query = query.filter(models.MillJob.mill_line == int(mill_line))
+        query_stmt = query_stmt.filter(models.MillJob.mill_line == int(mill_line))
 
     # 3. Pagination (✅ แก้บั๊กสำหรับ SQLite)
-    total_count = query.with_entities(func.count(func.distinct(models.ExtruderJob.job_id))).scalar()
+    total_count = (await db.execute(select(func.count(func.distinct(models.ExtruderJob.job_id))).select_from(query_stmt.subquery()))).scalar()
     total_pages = math.ceil(total_count / limit) if limit > 0 else 1
 
     # 4. Fetch Extruder Data (🚀 เปลี่ยนเป็น selectinload)
     # selectinload จะยิง Query แยก 1 ครั้งเพื่อดึงลูกๆ ทั้งหมด (เร็วกว่า joinedload ที่ join ตารางใหญ่ๆ)
-    jobs = (await db.execute(query.options(
+    jobs = (await db.execute(query_stmt.options(
         selectinload(models.ExtruderJob.warmups),
         selectinload(models.ExtruderJob.setups),
         selectinload(models.ExtruderJob.productions)

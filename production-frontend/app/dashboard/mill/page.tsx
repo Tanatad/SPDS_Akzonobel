@@ -16,39 +16,28 @@ export default function MillPage() {
     const [workingJobId, setWorkingJobId] = useState<number | null>(null);
     const queryClient = useQueryClient();
 
-    // 1. เช็คว่าเครื่องเราเป็น "เจ้าของ" งานไหนอยู่ไหม
-    const { data: myOwnedJob, isLoading: isCheckingOwner } = useQuery({
-        queryKey: ['myOwnedMillJob', millLine],
+
+    // ✅ ดึงข้อมูลงานที่กำลังรัน (ถ้ามีรหัส Join ให้ดึงตามรหัส, ถ้าไม่มีให้เช็คของเครื่องตัวเอง)
+    const { data: activeJob, refetch: refetchActiveJob, isLoading: isJobLoading } = useQuery({
+        queryKey: ['millJobDetail', workingJobId || millLine],
         queryFn: async () => {
-            if (!millLine) return null;
             try {
-                const res = await api.get(`/mill/job/active/${millLine}`);
-                return res.data || null;
+                if (workingJobId) {
+                    const res = await api.get(`/mill/job/detail/${workingJobId}`);
+                    return res.data || null;
+                } else if (millLine) {
+                    const res = await api.get(`/mill/job/active/${millLine}`);
+                    return res.data || null;
+                }
+                return null;
             } catch { return null; }
         },
-        enabled: !!millLine, // ✅ แก้ตรงนี้ให้เช็คได้อิสระขึ้น
-        staleTime: 0, 
-    });
-
-    // 🚀 THE ENTERPRISE FIX: สร้างตัวแปรบอกสถานะ "งานปัจจุบัน" แบบตรงไปตรงมา
-    // ถ้ารับเชิญมาร่วมบด (workingJobId) ให้ใช้อันนั้น ถ้าไม่มี ให้ไปดูว่าเป็นเจ้าของเครื่อง (myOwnedJob) ไหม
-    // วิธีนี้ React จะรู้คำตอบทันที ไม่ต้องรอ useEffect เรนเดอร์ 2 รอบ
-    const currentJobId = workingJobId || myOwnedJob?.job_id;
-
-    // 2. ดึงข้อมูลงานที่กำลังเปิดดูอยู่ (Live Sync ยอดบด)
-    const { data: activeJob, refetch: refetchActiveJob } = useQuery({
-        queryKey: ['millJobDetail', currentJobId], // ✅ เปลี่ยนมาใช้ currentJobId
-        queryFn: async () => {
-            if (!currentJobId) return null;
-            try {
-                const res = await api.get(`/mill/job/detail/${currentJobId}`);
-                return res.data || null;
-            } catch { return null; }
-        },
-        enabled: !!currentJobId, // ✅ เปลี่ยนมาใช้ currentJobId
+        enabled: !!millLine,
         refetchInterval: 5000,
         staleTime: 0,
     });
+
+    const currentJobId = activeJob?.job_id;
 
     // 3. ดึงคิวงานรอเข้าบด
     const { data: pendingJobs = [], refetch: refetchPending } = useQuery({
@@ -61,7 +50,7 @@ export default function MillPage() {
             } catch { return []; }
         },
         // ✅ เปลี่ยนเงื่อนไขให้ไม่ดึงคิวงาน ถ้าเรากำลังอยู่ในงานบดแล้ว
-        enabled: !!millLine && !currentJobId && !isCheckingOwner, 
+        enabled: !!millLine && !currentJobId,
         refetchInterval: 10000,
     });
 
@@ -85,7 +74,7 @@ export default function MillPage() {
     if (!millLine) return <MachineSelection millList={MILL_LIST} onSelectLine={setMillLine} />;
 
     // ✅ Guard ดักโหลดที่นิ่งและเสถียรที่สุด
-    if (isCheckingOwner || (currentJobId && !activeJob)) {
+    if (isJobLoading || (currentJobId && !activeJob)) {
         return (
             <div className="min-h-[70vh] flex flex-col items-center justify-center bg-slate-50 mt-6 rounded-3xl border border-slate-200">
                 <Loader2 className="animate-spin text-purple-600 mb-4" size={48} />

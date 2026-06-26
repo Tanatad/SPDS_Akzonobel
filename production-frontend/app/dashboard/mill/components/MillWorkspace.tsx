@@ -1,7 +1,7 @@
 // app/dashboard/mill/components/MillWorkspace.tsx
 import React, { useState, useEffect } from 'react';
 import { useKepwareWebSocket } from '@/lib/hooks/useKepwareWebSocket';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import api from '@/lib/api';
 import { Factory, LogOut, Settings, Package, RefreshCw, Beaker, Trash2, Save, Loader2, Clock, CheckCircle, FileText, Send, UserMinus } from 'lucide-react';
@@ -40,12 +40,15 @@ export default function MillWorkspace({ activeJob, millLine, isOwner, onFinish, 
   useKepwareWebSocket('mill', millLine);
   const { data: liveData } = useQuery({
     queryKey: ['kepwareLive', 'mill', millLine],
-    initialData: null as any
+    initialData: null as any,
+    queryFn: () => null,
+    staleTime: Infinity
   });
 
 
 
 
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'SETUP' | 'PRODUCTION'>('SETUP');
   const [isOtherCode, setIsOtherCode] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -58,21 +61,6 @@ export default function MillWorkspace({ activeJob, millLine, isOwner, onFinish, 
   const formSetup = useForm({ defaultValues: initialSetupForm });
   const formProd = useForm({ defaultValues: initialProdForm });
 
-  // Automatically update the form fields with live data
-  useEffect(() => {
-    if (liveData && !isMachineReading) {
-      const fmt = (v: any) => (v !== undefined && v !== null) ? Number(v).toFixed(2) : '';
-      const setVal = activeTab === 'SETUP' ? (k: any, v: any) => formSetup.setValue(k, v) : (k: any, v: any) => formProd.setValue(k, v);
-      const currentVals = activeTab === 'SETUP' ? formSetup.getValues() : formProd.getValues();
-
-      if (!currentVals.feeder) setVal('feeder', fmt(liveData.actual_mill_dosing));
-      if (!currentVals.sep) setVal('sep', fmt(liveData.actual_mill_sep));
-      if (!currentVals.rotor) setVal('rotor', fmt(liveData.actual_mill_rotor));
-      if (!currentVals.air) setVal('air', fmt(liveData.actual_mill_air_flow));
-      if (!currentVals.inlet) setVal('inlet', fmt(liveData.actual_mill_temp_in));
-      if (!currentVals.outlet) setVal('outlet', fmt(liveData.actual_mill_temp_out));
-    }
-  }, [liveData, isMachineReading, activeTab, formSetup, formProd]);
 
   const fs = formSetup.watch();
   const fp = formProd.watch();
@@ -96,6 +84,26 @@ export default function MillWorkspace({ activeJob, millLine, isOwner, onFinish, 
 
   const parseNum = (v: any) => parseFloat(v) || 0;
   
+
+  const handleReadMachine = () => {
+    setIsMachineReading(true);
+    // Grab latest WS payload from React Query Cache directly
+    const cachedData = queryClient.getQueryData(['kepwareLive', 'mill', millLine]) as any;
+
+    if (cachedData) {
+      const fmt = (v: any) => (v !== undefined && v !== null) ? Number(v).toFixed(2) : '';
+      const setVal = activeTab === 'SETUP' ? (k: any, v: any) => formSetup.setValue(k, v) : (k: any, v: any) => formProd.setValue(k, v);
+
+      setVal('feeder', fmt(cachedData.actual_mill_dosing));
+      setVal('sep', fmt(cachedData.actual_mill_sep));
+      setVal('rotor', fmt(cachedData.actual_mill_rotor));
+      setVal('air', fmt(cachedData.actual_mill_air_flow));
+      setVal('inlet', fmt(cachedData.actual_mill_temp_in));
+      setVal('outlet', fmt(cachedData.actual_mill_temp_out));
+    }
+    setTimeout(() => setIsMachineReading(false), 500); // UI feedback
+  };
+
   const setNow = (field: 'start' | 'stop') => {
       const now = new Date();
       const dt = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -283,7 +291,7 @@ export default function MillWorkspace({ activeJob, millLine, isOwner, onFinish, 
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mt-6">
                     <div className="flex justify-between items-center mb-6">
                         <SectionTitle icon={<Settings size={20}/>} title="Machine & Quality" />
-                        <div className="text-xs font-bold bg-green-50 text-green-700 px-4 py-2.5 rounded-xl flex items-center border border-green-200"><div className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></div>Live Data Active</div>
+                        <button type="button" onClick={handleReadMachine} disabled={isMachineReading || !liveData} className="text-xs font-bold bg-blue-50 hover:bg-blue-100 px-4 py-2.5 rounded-xl flex items-center transition-all active:scale-95 text-blue-700 border border-blue-200"><div className={`w-2 h-2 rounded-full mr-2 ${liveData ? "bg-green-500 animate-pulse" : "bg-red-500"}`}></div>{isMachineReading ? <RefreshCw className="animate-spin w-3.5 h-3.5 mr-2"/> : <RefreshCw className="w-3.5 h-3.5 mr-2"/>} Fetch Data</button>
                     </div>
                     <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-8">
                         <MachineParam label="Feeder" val={currentFormWatch.feeder} unit="rpm"/>

@@ -43,31 +43,21 @@ export default function ExtruderPage() {
     enabled: selectedLine === null, 
   });
 
-  // ✅ เช็คก่อนว่าเครื่องเราเป็น "เจ้าของ" งานไหนอยู่หรือเปล่า
-  const { data: myOwnedJob } = useQuery({
-    queryKey: ['myOwnedJob', selectedLine],
-    queryFn: async () => {
-      if (!selectedLine) return null;
-      const res = await api.get(`/process/job/active/${selectedLine}`);
-      return res.data || null;
-    },
-    enabled: !!selectedLine && !workingJobId, 
-  });
 
-  // ถ้าเจอว่าตัวเองเป็นเจ้าของงาน ให้ตั้งค่าเป็นงานที่กำลังทำอัตโนมัติ
-  useEffect(() => {
-      if (myOwnedJob && !workingJobId) setWorkingJobId(myOwnedJob.job_id);
-  }, [myOwnedJob]);
-
-  // ✅ ดึงข้อมูล "งานที่กำลังรุมทำ (Live Sync)"
+  // ✅ Fetch Job Detail: Either by explicitly joined ID, or by checking if our line has an active job.
   const { data: activeJob, refetch: refetchActiveJob, isLoading: isJobLoading } = useQuery({
-      queryKey: ['jobDetail', workingJobId],
+      queryKey: ['jobDetail', workingJobId || selectedLine],
       queryFn: async () => {
-          if (!workingJobId) return null;
-          const res = await api.get(`/process/job/detail/${workingJobId}`);
-          return res.data;
+          if (workingJobId) {
+             const res = await api.get(`/process/job/detail/${workingJobId}`);
+             return res.data || null;
+          } else if (selectedLine) {
+             const res = await api.get(`/process/job/active/${selectedLine}`);
+             return res.data || null;
+          }
+          return null;
       },
-      enabled: !!workingJobId,
+      enabled: !!selectedLine,
       refetchInterval: 5000, 
   });
 
