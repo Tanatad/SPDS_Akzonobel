@@ -1,0 +1,7 @@
+tunnel: d82ec0a3-b98d-41d3-87d3-b2671b79294e
+credentials-file: C:\Users\Admin\.cloudflared\d82ec0a3-b98d-41d3-87d3-b2671b79294e.json
+
+ingress:
+  - hostname: spds-portal.com
+    service: http://localhost:3000
+  - service: http_status:404
