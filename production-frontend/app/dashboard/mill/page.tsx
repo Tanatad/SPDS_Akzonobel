@@ -62,6 +62,7 @@ export default function MillPage() {
             await api.post(`/mill/job/finish/${activeJob.job_id}`);
             
             setWorkingJobId(null);
+            setMillLine(null);
             
             await queryClient.invalidateQueries({ queryKey: ['millActiveJob'] });
             await queryClient.invalidateQueries({ queryKey: ['myOwnedMillJob'] });
@@ -111,12 +112,14 @@ export default function MillPage() {
             onLeave={async () => {
                 if(confirm("🚪 ยืนยันการออกจากการช่วยบด?\nคุณจะกลับหน้าเลือกงาน โดยที่ PO นี้จะยังคงรันต่อไปที่เครื่องหลัก")) {
                     setWorkingJobId(null);
+            setMillLine(null);
                     await queryClient.invalidateQueries({ queryKey: ['millJobDetail'] });
                 }
             }}
             onSwitchLine={async () => {
                 setMillLine(null);
                 setWorkingJobId(null);
+            setMillLine(null);
                 await queryClient.invalidateQueries({ queryKey: ['millJobDetail'] });
                 await queryClient.invalidateQueries({ queryKey: ['myOwnedMillJob'] });
             }}

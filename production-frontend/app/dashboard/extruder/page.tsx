@@ -95,8 +95,7 @@ export default function ExtruderPage() {
 
                   setWorkingJobId(null);
                   
-                  // 🔥 บังคับรีเฟรชหน้าเว็บ เพื่อให้ State ทั้งหมดเริ่มใหม่ตั้งแต่ต้น
-                  window.location.reload();
+                  setSelectedLine(null);
               } catch(err) { alert("Error finishing job"); }
           }
       } else {
@@ -157,7 +156,7 @@ export default function ExtruderPage() {
         // ✅ โหมด 2: กำลังสร้างงานใหม่
         <div>
             <button onClick={() => setShowCreateForm(false)} className="mb-6 text-slate-500 font-bold hover:text-orange-600 transition-colors">← Back to Job Pool</button>
-            <StartJobForm selectedLine={selectedLine} fetchActiveJob={() => { refetchAllActiveJobs(); setShowCreateForm(false); }} />
+            <StartJobForm selectedLine={selectedLine} fetchActiveJob={() => { queryClient.invalidateQueries({ queryKey: ['jobDetail'] }); setShowCreateForm(false); }} />
         </div>
       ) : (
         // ✅ โหมด 3: หน้า Central Pool (เลือกว่าจะ Join หรืองานใหม่)

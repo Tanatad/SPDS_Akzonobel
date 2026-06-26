@@ -53,7 +53,7 @@ export const useKepwareWebSocket = (type: 'extruder' | 'mill', lineNo: number | 
       };
 
       ws.current.onerror = (error) => {
-        console.error("❌ Kepware WS connection failed, attempting to reconnect...");
+        console.warn("⚠️ Kepware WS connection failed, attempting to reconnect...");
         ws.current?.close(); // Trigger onclose
       };
 

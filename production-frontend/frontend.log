@@ -2,7 +2,7 @@
 > production-frontend@0.1.0 dev
 > next dev
 
- ⚠ Port 3000 is in use by an unknown process, using available port 3004 instead.
+ ⚠ Port 3000 is in use by an unknown process, using available port 3005 instead.
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
  ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
  We detected multiple lockfiles and selected the directory of /app/package-lock.json as the root directory.
@@ -12,18 +12,34 @@
    * /app/production-frontend/package-lock.json
 
    ▲ Next.js 16.0.10 (Turbopack)
-   - Local:         http://localhost:3004
-   - Network:       http://192.168.0.2:3004
+   - Local:         http://localhost:3005
+   - Network:       http://192.168.0.2:3005
    - Experiments (use with caution):
      · serverActions
 
  ✓ Starting...
- ✓ Ready in 1453ms
+ ✓ Ready in 1402ms
  ○ Compiling /dashboard/extruder ...
- GET /dashboard/extruder 200 in 5.6s (compile: 5.1s, render: 521ms)
-(node:1565055) [DEP0060] DeprecationWarning: The `util._extend` API is deprecated. Please use Object.assign() instead.
+ GET /dashboard/extruder 200 in 4.9s (compile: 4.5s, render: 417ms)
+(node:1836012) [DEP0060] DeprecationWarning: The `util._extend` API is deprecated. Please use Object.assign() instead.
 (Use `node --trace-deprecation ...` to show where the warning was created)
 Failed to proxy http://127.0.0.1:8000/api/v1/preview/extruder/1 Error: connect ECONNREFUSED 127.0.0.1:8000
+    at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8000) {
+  errno: -111,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 8000
+}
+Error: connect ECONNREFUSED 127.0.0.1:8000
+    at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8000) {
+  errno: -111,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 8000
+}
+Failed to proxy http://127.0.0.1:8000/api/v1/preview/extruder/2 Error: connect ECONNREFUSED 127.0.0.1:8000
     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8000) {
   errno: -111,
   code: 'ECONNREFUSED',
@@ -87,20 +103,4 @@ Error: connect ECONNREFUSED 127.0.0.1:8000
   address: '127.0.0.1',
   port: 8000
 }
-Failed to proxy http://127.0.0.1:8000/api/v1/preview/extruder/2 Error: connect ECONNREFUSED 127.0.0.1:8000
-    at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8000) {
-  errno: -111,
-  code: 'ECONNREFUSED',
-  syscall: 'connect',
-  address: '127.0.0.1',
-  port: 8000
-}
-Error: connect ECONNREFUSED 127.0.0.1:8000
-    at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8000) {
-  errno: -111,
-  code: 'ECONNREFUSED',
-  syscall: 'connect',
-  address: '127.0.0.1',
-  port: 8000
-}
- GET /dashboard/extruder 200 in 88ms (compile: 8ms, render: 81ms)
+ GET /dashboard/extruder 200 in 69ms (compile: 15ms, render: 54ms)
