@@ -1,7 +1,7 @@
 // app/dashboard/mill/components/StartJobForm.tsx
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Package, Scale, Play, Search, AlertCircle, Clock, CheckCircle, Users, PlusCircle, Settings } from 'lucide-react';
+import { ArrowLeft, Package, Scale, Play, Search, AlertCircle, Clock, CheckCircle, Users, PlusCircle, Send, Settings } from 'lucide-react';
 import api from '@/lib/api';
 
 export default function StartJobForm({ millLine, pendingJobs, onBack, onJoinJob, refetchActiveJob }: any) {
@@ -65,6 +65,7 @@ export default function StartJobForm({ millLine, pendingJobs, onBack, onJoinJob,
             });
 
             const newMillJobId = res.data.job_id;
+            if (onJoinJob && newMillJobId) onJoinJob(newMillJobId);
 
             if (jobDetailToStart) {
                 queryClient.setQueryData(['millJobDetail', newMillJobId], {
@@ -109,6 +110,7 @@ export default function StartJobForm({ millLine, pendingJobs, onBack, onJoinJob,
             });
 
             const newMillJobId = res.data.job_id;
+            if (onJoinJob && newMillJobId) onJoinJob(newMillJobId);
 
             queryClient.setQueryData(['millJobDetail', newMillJobId], {
                 job_id: newMillJobId,
@@ -193,13 +195,13 @@ export default function StartJobForm({ millLine, pendingJobs, onBack, onJoinJob,
                             <h2 className="text-base font-black text-purple-900 mb-4 flex items-center gap-2"><Users size={18}/> กำลังบดอยู่ตอนนี้ (สามารถเข้าร่วมรุมบดได้)</h2>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 {activeMillPools.map((mj: any) => (
-                                    <div key={mj.job_id} className="bg-white p-5 rounded-2xl border border-purple-200 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                                    <div key={mj.job_id} className="bg-white rounded-lg border border-slate-300 shadow-sm flex flex-col justify-between hover:shadow-md transition-all overflow-hidden p-0">
                                         <div>
-                                            <div className="text-[10px] bg-purple-100 text-purple-800 border border-purple-200 font-black px-2 py-0.5 rounded w-fit mb-2">PO: {mj.po_no}</div>
-                                            <div className="text-xl font-black text-slate-800 mb-2 truncate" title={mj.product_code}>{mj.product_code}</div>
-                                            <div className="text-xs font-bold text-slate-400">เดินบดอยู่ที่เครื่อง: Mill {mj.mill_line}</div>
+                                            <div className="bg-slate-100 border-b border-slate-200 px-4 py-3 flex justify-between items-center"><span className="text-xs font-medium text-slate-500 uppercase tracking-wider">PO: {mj.po_no}</span></div>
+                                            <div className="p-4 flex flex-col flex-grow"><h3 className="text-xl font-bold text-slate-800 mb-2 truncate" title={mj.product_code}>{mj.product_code}</h3>
+                                            <div className="text-xs font-medium text-slate-500 mb-4 flex items-center gap-1.5"><Users size={14}/> Mill {mj.mill_line}</div>
                                         </div>
-                                        <button onClick={() => triggerScreenUpdate(mj.job_id)} className="w-full mt-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-purple-200 active:scale-95">🤝 ร่วมรุมบด (Join)</button>
+                                        <button onClick={() => triggerScreenUpdate(mj.job_id)} className="w-full mt-auto py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm rounded-md transition-all shadow-sm active:scale-95 flex items-center justify-center gap-2"><Send size={14}/> Join Mill</button></div>
                                     </div>
                                 ))}
                             </div>
@@ -256,7 +258,7 @@ export default function StartJobForm({ millLine, pendingJobs, onBack, onJoinJob,
                                     <div className="flex gap-3 w-full md:w-auto">
                                         {[15, 20].map(w => (<button key={w} onClick={() => setBoxWeight(w)} className={`flex-1 md:w-32 py-3 md:py-4 rounded-2xl font-black text-lg md:text-xl border-2 transition-all duration-200 ${boxWeight === w ? 'border-purple-500 bg-purple-600 text-white shadow-lg scale-105' : 'border-slate-200 bg-slate-50 text-slate-400 hover:border-purple-300 hover:text-purple-600'}`}>{w} Kg</button>))}
                                     </div>
-                                    <button onClick={handleStartJob} className="w-full md:w-auto px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-2xl font-bold text-lg md:text-xl shadow-xl shadow-green-200 transition-all active:scale-95 flex justify-center items-center gap-3 whitespace-nowrap"><Play className="fill-current" size={24}/> Start Job</button>
+                                    <button onClick={handleStartJob} className="w-full md:w-auto px-8 py-4 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold text-lg md:text-xl shadow-sm transition-all active:scale-95 flex justify-center items-center gap-3 whitespace-nowrap"><Play className="fill-current" size={24}/> Start Job</button>
                                 </div>
                             </div>
                         </div>

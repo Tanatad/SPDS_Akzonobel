@@ -43,21 +43,31 @@ export default function ExtruderPage() {
     enabled: selectedLine === null, 
   });
 
+  // ✅ เช็คก่อนว่าเครื่องเราเป็น "เจ้าของ" งานไหนอยู่หรือเปล่า
+  const { data: myOwnedJob } = useQuery({
+    queryKey: ['myOwnedJob', selectedLine],
+    queryFn: async () => {
+      if (!selectedLine) return null;
+      const res = await api.get(`/process/job/active/${selectedLine}`);
+      return res.data || null;
+    },
+    enabled: !!selectedLine && !workingJobId,
+  });
 
-  // ✅ Fetch Job Detail: Either by explicitly joined ID, or by checking if our line has an active job.
+  // ถ้าเจอว่าตัวเองเป็นเจ้าของงาน ให้ตั้งค่าเป็นงานที่กำลังทำอัตโนมัติ
+  useEffect(() => {
+      if (myOwnedJob && !workingJobId) setWorkingJobId(myOwnedJob.job_id);
+  }, [myOwnedJob]);
+
+  // ✅ ดึงข้อมูล "งานที่กำลังรุมทำ (Live Sync)"
   const { data: activeJob, refetch: refetchActiveJob, isLoading: isJobLoading } = useQuery({
-      queryKey: ['jobDetail', workingJobId || selectedLine],
+      queryKey: ['jobDetail', workingJobId],
       queryFn: async () => {
-          if (workingJobId) {
-             const res = await api.get(`/process/job/detail/${workingJobId}`);
-             return res.data || null;
-          } else if (selectedLine) {
-             const res = await api.get(`/process/job/active/${selectedLine}`);
-             return res.data || null;
-          }
-          return null;
+          if (!workingJobId) return null;
+          const res = await api.get(`/process/job/detail/${workingJobId}`);
+          return res.data;
       },
-      enabled: !!selectedLine,
+      enabled: !!workingJobId,
       refetchInterval: 5000, 
   });
 
@@ -95,7 +105,8 @@ export default function ExtruderPage() {
 
                   setWorkingJobId(null);
                   
-                  setSelectedLine(null);
+                  // 🔥 บังคับรีเฟรชหน้าเว็บ เพื่อให้ State ทั้งหมดเริ่มใหม่ตั้งแต่ต้น
+                  window.location.reload();
               } catch(err) { alert("Error finishing job"); }
           }
       } else {
@@ -156,7 +167,7 @@ export default function ExtruderPage() {
         // ✅ โหมด 2: กำลังสร้างงานใหม่
         <div>
             <button onClick={() => setShowCreateForm(false)} className="mb-6 text-slate-500 font-bold hover:text-orange-600 transition-colors">← Back to Job Pool</button>
-            <StartJobForm selectedLine={selectedLine} fetchActiveJob={() => { queryClient.invalidateQueries({ queryKey: ['jobDetail'] }); setShowCreateForm(false); }} />
+            <StartJobForm selectedLine={selectedLine} fetchActiveJob={() => { refetchAllActiveJobs(); setShowCreateForm(false); }} />
         </div>
       ) : (
         // ✅ โหมด 3: หน้า Central Pool (เลือกว่าจะ Join หรืองานใหม่)
@@ -178,18 +189,20 @@ export default function ExtruderPage() {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {allActiveJobs.map((job: any) => (
-                        <div key={job.job_id} className="bg-white border border-slate-200 rounded-2xl p-6 hover:shadow-lg transition-all group">
-                            <div className="flex justify-between items-start mb-4">
-                                <span className="bg-slate-100 text-slate-600 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-md border border-slate-200">PO: {job.po_no}</span>
-                                <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-orange-600 bg-orange-50 px-2 py-1 rounded-md border border-orange-200"><Flame size={12}/> Active</span>
+                        <div key={job.job_id} className="bg-white border border-slate-300 rounded-lg shadow-sm hover:shadow-md transition-all group overflow-hidden flex flex-col p-0">
+                            <div className="bg-slate-100 border-b border-slate-200 px-4 py-3 flex justify-between items-center">
+                                <span className="text-slate-500 text-xs font-medium uppercase tracking-wider">PO: {job.po_no}</span>
+                                <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100 px-2 py-1 rounded border border-emerald-300"><Flame size={12}/> Active</span>
                             </div>
-                            <h3 className="text-2xl font-black text-slate-800 mb-1">{job.product_code}</h3>
-                            <div className="text-sm font-medium text-slate-500 flex items-center gap-2 mb-6"><Users size={14}/> Started by Line {job.extruder_line}</div>
-                            <div className="flex items-end justify-between pt-4 border-t border-slate-100">
-                                <div><div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Target</div><div className="font-black text-lg text-slate-700">{job.target_pots} <span className="text-xs text-slate-400 font-bold">Pots</span></div></div>
-                                <button onClick={() => setWorkingJobId(job.job_id)} className="bg-blue-50 text-blue-700 font-bold px-4 py-2 rounded-xl text-sm border border-blue-100 hover:bg-blue-600 hover:text-white transition-all">
+                            <div className="p-4 flex-grow">
+                                <h3 className="text-xl font-bold text-slate-800 mb-2">{job.product_code}</h3>
+                            <div className="text-xs font-medium text-slate-500 flex items-center gap-1.5 mb-4"><Users size={14}/> Started by Line {job.extruder_line}</div>
+                            <div className="flex items-end justify-between pt-4 border-t border-slate-100 mt-auto">
+                                <div><div className="text-xs font-medium text-slate-500 uppercase tracking-wide">Target</div><div className="font-bold text-lg text-slate-800">{job.target_pots} <span className="text-xs text-slate-500 font-medium">Pots</span></div></div>
+                                <button onClick={() => setWorkingJobId(job.job_id)} className="bg-slate-800 text-white font-bold px-4 py-2 rounded-md text-sm hover:bg-slate-700 transition-all shadow-sm active:scale-95">
                                     Join Job
                                 </button>
+                            </div>
                             </div>
                         </div>
                     ))}
