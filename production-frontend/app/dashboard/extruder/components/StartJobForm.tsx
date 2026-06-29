@@ -7,7 +7,7 @@ import { parseNum } from '../utils'; // ลบ MILL_LIST, PAIRING_MAP ออก
 interface Props {
   selectedLine: number;
   fetchActiveJob: () => void;
-  onJoinJob?: (id: number) => void;
+  onJoinJob?: (id: number, data: any) => void;
 }
 
 export default function StartJobForm({ selectedLine, fetchActiveJob, onJoinJob }: Props) {
@@ -28,7 +28,7 @@ export default function StartJobForm({ selectedLine, fetchActiveJob, onJoinJob }
         target_pots: parseNum(header.targetPots), 
         target_kg: parseNum(header.targetKg)
       });
-      if (onJoinJob && res.data?.job_id) onJoinJob(res.data.job_id); else fetchActiveJob();
+      if (onJoinJob && res.data?.job_id) onJoinJob(res.data.job_id, res.data); else fetchActiveJob();
     } catch (err: any) { alert(err.response?.data?.detail || "Error"); }
   };
 
