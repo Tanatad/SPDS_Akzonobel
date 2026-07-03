@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from pydantic import BaseModel
 from passlib.context import CryptContext
 from typing import Optional
@@ -56,7 +57,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(database.get_db)):
+async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(database.get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -70,14 +71,14 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
     except JWTError:
         raise credentials_exception
     
-    user = db.query(models.User).filter(models.User.username == username).first()
+    user = (await db.execute(select(models.User).filter(models.User.username == username))).scalars().first()
     if user is None:
         raise credentials_exception
     return user
 
 # --- 📝 REGISTER API ---
 @router.post("/auth/register", status_code=status.HTTP_201_CREATED)
-def register(user: UserCreate, db: Session = Depends(database.get_db)):
+async def register(user: UserCreate, db: AsyncSession = Depends(database.get_db)):
     # 1. Validate Invite Code
     if user.invite_code != COMPANY_INVITE_CODE:
         raise HTTPException(status_code=403, detail="Invalid Company Invite Code!")
@@ -90,7 +91,7 @@ def register(user: UserCreate, db: Session = Depends(database.get_db)):
         raise HTTPException(status_code=400, detail=f"Registration restricted to {required_domain} only.")
 
     # 3. Check Duplicate
-    if db.query(models.User).filter(models.User.username == clean_username).first():
+    if (await db.execute(select(models.User).filter(models.User.username == clean_username))).scalars().first():
         raise HTTPException(status_code=400, detail="Email already registered")
     
     # 4. Create User (Wait for Approval)
@@ -107,15 +108,15 @@ def register(user: UserCreate, db: Session = Depends(database.get_db)):
     )
     
     db.add(new_user)
-    db.commit()
+    await db.commit()
     
     return {"message": "Account created. Please wait for manager approval."}
 
 # --- 🔐 LOGIN API (Secure Flow) ---
 @router.post("/auth/login")
-def login(user: UserLogin, db: Session = Depends(database.get_db)):
+async def login(user: UserLogin, db: AsyncSession = Depends(database.get_db)):
     clean_username = user.username.lower().strip()
-    db_user = db.query(models.User).filter(models.User.username == clean_username).first()
+    db_user = (await db.execute(select(models.User).filter(models.User.username == clean_username))).scalars().first()
 
     # 1. Basic Check (User/Pass)
     if not db_user or not verify_password(user.password, db_user.password_hash):
@@ -132,8 +133,8 @@ def login(user: UserLogin, db: Session = Depends(database.get_db)):
     if not db_user.mfa_secret:
         db_user.mfa_secret = pyotp.random_base32()
         db_user.mfa_enabled = False # บังคับ Setup ใหม่
-        db.commit()
-        db.refresh(db_user)
+        await db.commit()
+        await db.refresh(db_user)
 
     totp = pyotp.TOTP(db_user.mfa_secret)
 
@@ -144,7 +145,7 @@ def login(user: UserLogin, db: Session = Depends(database.get_db)):
             # User สแกนแล้วส่ง Code มายืนยัน
             if totp.verify(user.mfa_code):
                 db_user.mfa_enabled = True
-                db.commit()
+                await db.commit()
                 # ผ่านไปรับ Token ด้านล่าง
             else:
                 raise HTTPException(status_code=400, detail="Invalid Activation Code")
@@ -183,7 +184,7 @@ def login(user: UserLogin, db: Session = Depends(database.get_db)):
 
 # --- 🛡️ Check Auth Status ---
 @router.get("/auth/me")
-def get_me(current_user: models.User = Depends(get_current_user)):
+async def get_me(current_user: models.User = Depends(get_current_user)):
     return {
         "username": current_user.username,
         "role": current_user.role,

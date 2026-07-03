@@ -1,5 +1,7 @@
+from sqlalchemy import select
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
@@ -68,13 +70,13 @@ async def preview_extruder_data(line_no: int):
         }
 
 @router.post("/process/job/start", status_code=status.HTTP_201_CREATED)
-def start_job(req: JobStartRequest, db: Session = Depends(database.get_db)):
+async def start_job(req: JobStartRequest, db: AsyncSession = Depends(database.get_db)):
     # ✅ เช็คว่ามี PO นี้กำลังรันอยู่ (IN_PROGRESS) ในระบบหรือไม่ ป้องกันการสร้างซ้ำ!
     po_formatted = req.po_no.strip().upper()
-    existing_job = db.query(models.ExtruderJob).filter(
+    existing_job = (await db.execute(select(models.ExtruderJob).filter(
         models.ExtruderJob.po_no == po_formatted,
         models.ExtruderJob.status == 'IN_PROGRESS'
-    ).first()
+    ))).scalars().first()
 
     if existing_job:
         raise HTTPException(
@@ -94,36 +96,36 @@ def start_job(req: JobStartRequest, db: Session = Depends(database.get_db)):
         status='IN_PROGRESS'
     )
     db.add(new_job)
-    db.commit()
-    db.refresh(new_job) 
+    await db.commit()
+    await db.refresh(new_job)
     return new_job
 
 # ✅ [API ที่เติมกลับมาให้] ดึงงาน Active ของเครื่องตัวเอง
 @router.get("/process/job/active/{extruder_line}")
-def get_active_job(extruder_line: int, db: Session = Depends(database.get_db)):
-    return db.query(models.ExtruderJob).options(
+async def get_active_job(extruder_line: int, db: AsyncSession = Depends(database.get_db)):
+    return (await db.execute(select(models.ExtruderJob).options(
         joinedload(models.ExtruderJob.warmups), 
         joinedload(models.ExtruderJob.setups), 
         joinedload(models.ExtruderJob.productions)
     ).filter(
         models.ExtruderJob.extruder_line == extruder_line, 
         models.ExtruderJob.status == 'IN_PROGRESS'
-    ).first()
+    ))).unique().scalars().first()
 
 # ✅ ดึงงาน IN_PROGRESS "ทั้งหมด" ให้หน้าจอนำไปแสดงผลให้คนเลือก Join
 @router.get("/process/jobs/active/all")
-def get_all_active_jobs(db: Session = Depends(database.get_db)):
-    return db.query(models.ExtruderJob).filter(models.ExtruderJob.status == 'IN_PROGRESS').order_by(models.ExtruderJob.created_at.desc()).all()
+async def get_all_active_jobs(db: AsyncSession = Depends(database.get_db)):
+    return (await db.execute(select(models.ExtruderJob).filter(models.ExtruderJob.status == 'IN_PROGRESS').order_by(models.ExtruderJob.created_at.desc()))).scalars().all()
 
 # ดึงรายละเอียดงานที่ต้องการ (พร้อม Logs)
 @router.get("/process/job/detail/{job_id}")
-def get_job_detail(job_id: int, db: Session = Depends(database.get_db)):
-    return db.query(models.ExtruderJob).options(
+async def get_job_detail(job_id: int, db: AsyncSession = Depends(database.get_db)):
+    return (await db.execute(select(models.ExtruderJob).options(
         joinedload(models.ExtruderJob.warmups), joinedload(models.ExtruderJob.setups), joinedload(models.ExtruderJob.productions)
-    ).filter(models.ExtruderJob.job_id == job_id).first()
+    ).filter(models.ExtruderJob.job_id == job_id))).unique().scalars().first()
 
 @router.post("/process/log/warmup")
-def add_warmup(req: WarmupLogRequest, db: Session = Depends(database.get_db)):
+async def add_warmup(req: WarmupLogRequest, db: AsyncSession = Depends(database.get_db)):
     new_log = models.WarmupLog(
         job_id=req.job_id,
         extruder_line=req.extruder_line, # ✅ เซฟเบอร์เครื่อง
@@ -134,12 +136,12 @@ def add_warmup(req: WarmupLogRequest, db: Session = Depends(database.get_db)):
         remark=req.remark
     )
     db.add(new_log)
-    db.commit()
-    db.refresh(new_log) 
+    await db.commit()
+    await db.refresh(new_log)
     return new_log      
 
 @router.post("/process/log/setup")
-def add_setup(req: SetupLogRequest, db: Session = Depends(database.get_db)):
+async def add_setup(req: SetupLogRequest, db: AsyncSession = Depends(database.get_db)):
     new_log = models.SetupLog(
         job_id=req.job_id,
         extruder_line=req.extruder_line, # ✅ เซฟเบอร์เครื่อง
@@ -159,12 +161,12 @@ def add_setup(req: SetupLogRequest, db: Session = Depends(database.get_db)):
         remark_quality=req.remark_quality, remark_machine=req.remark_machine, remark_other=req.remark_other
     )
     db.add(new_log)
-    db.commit()
-    db.refresh(new_log) 
+    await db.commit()
+    await db.refresh(new_log)
     return new_log      
 
 @router.post("/process/log/production")
-def add_production(req: ProductionLogRequest, db: Session = Depends(database.get_db)):
+async def add_production(req: ProductionLogRequest, db: AsyncSession = Depends(database.get_db)):
     new_log = models.ProductionLog(
         job_id=req.job_id,
         extruder_line=req.extruder_line, # ✅ เซฟเบอร์เครื่อง
@@ -184,39 +186,39 @@ def add_production(req: ProductionLogRequest, db: Session = Depends(database.get
         remark_quality=req.remark_quality, remark_machine=req.remark_machine, remark_other=req.remark_other
     )
     db.add(new_log)
-    db.commit()
-    db.refresh(new_log) 
+    await db.commit()
+    await db.refresh(new_log)
     return new_log      
 
 @router.post("/process/job/finish/{job_id}")
-def finish_job(job_id: int, db: Session = Depends(database.get_db)):
-    job = db.query(models.ExtruderJob).filter(models.ExtruderJob.job_id == job_id).first()
-    if job: job.status = 'WAITING_MILL'; db.commit()
+async def finish_job(job_id: int, db: AsyncSession = Depends(database.get_db)):
+    job = (await db.execute(select(models.ExtruderJob).filter(models.ExtruderJob.job_id == job_id))).scalars().first()
+    if job: job.status = 'WAITING_MILL'; await db.commit()
     return {"msg": "Finished"}
 
 @router.delete("/process/log/warmup/delete/{log_id}")
-def delete_warmup_log(log_id: int, db: Session = Depends(database.get_db)):
-    log = db.query(models.WarmupLog).filter(models.WarmupLog.id == log_id).first()
+async def delete_warmup_log(log_id: int, db: AsyncSession = Depends(database.get_db)):
+    log = (await db.execute(select(models.WarmupLog).filter(models.WarmupLog.id == log_id))).scalars().first()
     if not log:
         raise HTTPException(status_code=404, detail="Log not found")
-    db.delete(log)
-    db.commit()
+    await db.delete(log)
+    await db.commit()
     return {"msg": "Warmup log deleted successfully"}
 
 @router.delete("/process/log/setup/delete/{log_id}")
-def delete_setup_log(log_id: int, db: Session = Depends(database.get_db)):
-    log = db.query(models.SetupLog).filter(models.SetupLog.id == log_id).first()
+async def delete_setup_log(log_id: int, db: AsyncSession = Depends(database.get_db)):
+    log = (await db.execute(select(models.SetupLog).filter(models.SetupLog.id == log_id))).scalars().first()
     if not log:
         raise HTTPException(status_code=404, detail="Log not found")
-    db.delete(log)
-    db.commit()
+    await db.delete(log)
+    await db.commit()
     return {"msg": "Setup log deleted successfully"}
 
 @router.delete("/process/log/production/delete/{log_id}")
-def delete_production_log(log_id: int, db: Session = Depends(database.get_db)):
-    log = db.query(models.ProductionLog).filter(models.ProductionLog.id == log_id).first()
+async def delete_production_log(log_id: int, db: AsyncSession = Depends(database.get_db)):
+    log = (await db.execute(select(models.ProductionLog).filter(models.ProductionLog.id == log_id))).scalars().first()
     if not log:
         raise HTTPException(status_code=404, detail="Log not found")
-    db.delete(log)
-    db.commit()
+    await db.delete(log)
+    await db.commit()
     return {"msg": "Production log deleted successfully"}

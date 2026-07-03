@@ -51,7 +51,7 @@ export default function ExtruderPage() {
       const res = await api.get(`/process/job/active/${selectedLine}`);
       return res.data || null;
     },
-    enabled: !!selectedLine && !workingJobId, 
+    enabled: !!selectedLine && !workingJobId,
   });
 
   // ถ้าเจอว่าตัวเองเป็นเจ้าของงาน ให้ตั้งค่าเป็นงานที่กำลังทำอัตโนมัติ
