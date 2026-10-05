@@ -21,9 +21,13 @@ def calculate_duration_min(start_dt: datetime, stop_dt: datetime):
 
 # --- Schemas ---
 class JobStartRequest(BaseModel):
-    # ✅ ลบ planned_mill_line ออก เพราะเราใช้ Central Pool แล้ว
-    po_no: str; product_code: str; operator_name: str; extruder_line: int
-    target_pots: float; target_kg: float
+    po_no: str
+    batch_no: Optional[str] = None # ✅ รับค่า Batch No (ปล่อยว่างได้)
+    product_code: str
+    operator_name: str
+    extruder_line: int
+    target_pots: float
+    target_kg: float
 
 class WarmupLogRequest(BaseModel):
     job_id: int; extruder_line: int # ✅ เพิ่ม extruder_line
@@ -87,10 +91,11 @@ async def start_job(req: JobStartRequest, db: AsyncSession = Depends(database.ge
     # ถ้าไม่มีค่อยสร้างงานใหม่
     new_job = models.ExtruderJob(
         po_no=po_formatted, 
+        batch_no=req.batch_no, # ✅ บันทึก Batch No.
         product_code=req.product_code.strip().upper(), 
         operator_name=req.operator_name,
         extruder_line=req.extruder_line, 
-        planned_mill_line=0, # ใส่ 0 ไปเป็นค่า Default (ไม่ได้ใช้แล้ว)
+        planned_mill_line=0, 
         target_pots=req.target_pots, 
         target_kg=req.target_kg, 
         status='IN_PROGRESS'

@@ -1,7 +1,7 @@
 // app/dashboard/history/components/JobDetailModal.tsx
 import { X, Clock, LayoutGrid, Zap, Flame, Settings, Printer } from 'lucide-react';
 import { fmtDateTime, fmtNum, calcThroughput, getJobDuration, getSortedExtruderCols, getSortedMillCols, calcTimeDiff } from '../utils';
-import { StatusBadge, QCCircle, ValCell } from './UIComponents';
+import { StatusBadge, QCCircle, ValCell, QapdBadge } from './UIComponents'; // ✅ Import QapdBadge
 import MillPrintForm from '../../mill/components/MillPrintForm';
 
 export default function JobDetailModal({ job, onClose }: any) {
@@ -12,15 +12,17 @@ export default function JobDetailModal({ job, onClose }: any) {
     const millCols = getSortedMillCols(job);
 
     return (
-        // 🚀 THE FIX: ใช้ print:!block และ print:!static เพื่อยกเลิก flex และ fixed ตอนปริ้นท์ ทำให้กระดาษ A4 กางได้เต็ม 100%
         <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200 print:!block print:!static print:!bg-transparent print:!p-0 print:!backdrop-blur-none">
-            
-            {/* ซ่อน UI ของ Modal นี้ไม่ให้ติดไปในกระดาษ */}
             <div className="bg-white rounded-2xl w-full max-w-[95%] h-[92vh] overflow-hidden shadow-2xl flex flex-col border border-slate-200 animate-in zoom-in-95 duration-200 print:hidden">
                 <div className="px-6 py-4 border-b bg-white flex justify-between items-center shadow-sm z-20">
                     <div className="flex items-center gap-6">
                         <div>
-                            <div className="flex items-center gap-3 mb-1"><h2 className="text-2xl font-bold text-slate-800">{job.product_code}</h2><StatusBadge status={job.status}/></div>
+                            <div className="flex items-center gap-3 mb-1">
+                                <h2 className="text-2xl font-bold text-slate-800">{job.product_code}</h2>
+                                <StatusBadge status={job.status}/>
+                                {/* ✅ เพิ่มป้าย QA ตรงนี้ */}
+                                <QapdBadge status={job.qapd_status} remark={job.qapd_remark} />
+                            </div>
                             <div className="flex items-center gap-4 text-xs text-slate-500 font-medium">
                                 <span className="bg-slate-100 px-2 py-0.5 rounded border">PO: {job.po_no}</span>
                                 <span className="flex items-center gap-1"><Clock size={12}/> {fmtDateTime(job.created_at)}</span>
@@ -121,11 +123,9 @@ export default function JobDetailModal({ job, onClose }: any) {
                 </div>
             </div>
 
-            {/* ✅ ตัวฟอร์มพิมพ์ซ่อนอยู่ด้านหลังสุด (ทำงานร่วมกับ CSS ใหม่อย่างสมบูรณ์แบบ) */}
             {job.mill_logs?.length > 0 && (
                 <MillPrintForm jobData={{...job, production_logs: job.mill_logs, mill_line: job.mill_data?.mill_line || job.mill_line}} />
             )}
-            
         </div>
     );
 }

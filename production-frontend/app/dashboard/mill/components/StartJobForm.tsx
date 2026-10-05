@@ -1,7 +1,7 @@
 // app/dashboard/mill/components/StartJobForm.tsx
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Package, Scale, Play, Search, AlertCircle, Clock, CheckCircle, Users, PlusCircle, Send, Settings } from 'lucide-react';
+import { ArrowLeft, Package, Scale, Play, Search, AlertCircle, Clock, CheckCircle, Users, PlusCircle, Send, Settings, Barcode } from 'lucide-react';
 import api from '@/lib/api';
 
 export default function StartJobForm({ millLine, pendingJobs, onBack, onJoinJob, refetchActiveJob }: any) {
@@ -11,10 +11,10 @@ export default function StartJobForm({ millLine, pendingJobs, onBack, onJoinJob,
     
     const [isManualMode, setIsManualMode] = useState(false);
     const [manualPo, setManualPo] = useState('');
+    const [manualBatchNo, setManualBatchNo] = useState(''); // ใช้เฉพาะโหมด Manual
     const [manualCode, setManualCode] = useState('');
     const [manualTarget, setManualTarget] = useState('');
 
-    // ✅ 1. เพิ่ม State สำหรับเก็บค่า Machine Condition Setup
     const [feederSet, setFeederSet] = useState<string>('');
     const [separatorSet, setSeparatorSet] = useState<string>('');
     const [rotorSet, setRotorSet] = useState<string>('');
@@ -53,7 +53,7 @@ export default function StartJobForm({ millLine, pendingJobs, onBack, onJoinJob,
         try {
             const jobDetailToStart = pendingJobs.find((j: any) => j.job_id === selectedJobId);
 
-            // ✅ 2. อัปเดต Payload ส่งค่า Setup ไปให้ API
+            // ส่งแค่ข้อมูลเท่าที่ Backend จำเป็นต้องรู้ (Batch Backend จะไปดึงเอง)
             const res = await api.post('/mill/job/start', { 
                 extruder_job_id: selectedJobId, 
                 mill_line: millLine, 
@@ -73,6 +73,7 @@ export default function StartJobForm({ millLine, pendingJobs, onBack, onJoinJob,
                     extruder_job_id: jobDetailToStart.job_id,
                     extruder_line: jobDetailToStart.extruder_line,
                     po_no: jobDetailToStart.po_no,
+                    batch_no: jobDetailToStart.batch_no, // ดึง Batch เดิมจาก Extruder มาโชว์
                     product_code: jobDetailToStart.product_code,
                     target_kg: jobDetailToStart.target_kg,
                     box_weight: boxWeight,
@@ -89,7 +90,7 @@ export default function StartJobForm({ millLine, pendingJobs, onBack, onJoinJob,
             triggerScreenUpdate(newMillJobId); 
         } catch (err: any) { 
             console.error(err.response?.data); 
-            alert("Start Error"); 
+            alert(`Start Error: ${err.response?.data?.detail || "ระบบขัดข้อง"}`); 
         }
     };
 
@@ -99,10 +100,13 @@ export default function StartJobForm({ millLine, pendingJobs, onBack, onJoinJob,
         if (!feederSet || !separatorSet || !rotorSet || !airFlowSet) return alert("กรุณาระบุค่า Machine Condition ให้ครบถ้วน");
 
         try {
-            // ✅ 3. อัปเดต Payload สำหรับโหมด Manual
             const res = await api.post('/mill/job/start-manual', {
-                po_no: manualPo, product_code: manualCode, target_kg: parseFloat(manualTarget),
-                mill_line: millLine, box_weight: boxWeight,
+                po_no: manualPo, 
+                batch_no: manualBatchNo, // โหมดนี้ให้ส่งได้
+                product_code: manualCode, 
+                target_kg: parseFloat(manualTarget),
+                mill_line: millLine, 
+                box_weight: boxWeight,
                 feeder_set: parseFloat(feederSet),
                 separator_set: parseFloat(separatorSet),
                 rotor_set: parseFloat(rotorSet),
@@ -117,6 +121,7 @@ export default function StartJobForm({ millLine, pendingJobs, onBack, onJoinJob,
                 extruder_job_id: null,
                 extruder_line: 0,
                 po_no: manualPo.toUpperCase(),
+                batch_no: manualBatchNo, 
                 product_code: manualCode.toUpperCase(),
                 target_kg: parseFloat(manualTarget),
                 box_weight: boxWeight,
@@ -154,11 +159,23 @@ export default function StartJobForm({ millLine, pendingJobs, onBack, onJoinJob,
                     <h2 className="text-xl font-black text-slate-800 mb-2">Create New Mill Job</h2>
                     <p className="text-xs font-medium text-slate-400 mb-6">สำหรับเปิดงานบดกรณีเครื่องฉีดไม่มีการติดตั้งระบบส่งข้อมูล (No OPC UA)</p>
                     <form onSubmit={handleStartManualJob} className="space-y-4">
-                        <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">PO Number</label><input type="text" required value={manualPo} onChange={(e)=>setManualPo(e.target.value)} placeholder="เช่น P3B16220..." className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-purple-200 outline-none uppercase"/></div>
-                        <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Product Code</label><input type="text" required value={manualCode} onChange={(e)=>setManualCode(e.target.value)} placeholder="เช่น EA03JTH" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-purple-200 outline-none uppercase"/></div>
-                        <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Target Quantity (Kg)</label><input type="number" step="any" required value={manualTarget} onChange={(e)=>setManualTarget(e.target.value)} placeholder="ระบุน้ำหนักเป้าหมายรวม" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-purple-200 outline-none"/></div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">PO Number</label>
+                            <input type="text" required value={manualPo} onChange={(e)=>setManualPo(e.target.value)} placeholder="เช่น P3B16220..." className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-purple-200 outline-none uppercase"/>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1 flex items-center gap-1"><Barcode size={14}/> Batch Number (Optional)</label>
+                            <input type="text" value={manualBatchNo} onChange={(e)=>setManualBatchNo(e.target.value)} placeholder="ระบุ Batch No." className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-purple-200 outline-none"/>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Product Code</label>
+                            <input type="text" required value={manualCode} onChange={(e)=>setManualCode(e.target.value)} placeholder="เช่น EA03JTH" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-purple-200 outline-none uppercase"/>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Target Quantity (Kg)</label>
+                            <input type="number" step="any" required value={manualTarget} onChange={(e)=>setManualTarget(e.target.value)} placeholder="ระบุน้ำหนักเป้าหมายรวม" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-purple-200 outline-none"/>
+                        </div>
                         
-                        {/* ✅ 4. เพิ่มฟอร์มกรอก Machine Condition (โหมด Manual) */}
                         <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mt-2">
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-1.5"><Settings size={14}/> Milling Condition Set</label>
                             <div className="grid grid-cols-2 gap-3">
@@ -227,7 +244,10 @@ export default function StartJobForm({ millLine, pendingJobs, onBack, onJoinJob,
                                             {job.status === 'WAITING_MILL' ? <div className="flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 text-amber-700 text-[9px] font-black uppercase tracking-wider rounded border border-amber-200 whitespace-nowrap"><AlertCircle size={10}/> Ready</div> : <div className="flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[9px] font-black uppercase tracking-wider rounded border border-blue-200 whitespace-nowrap"><Clock size={10}/> Extruding</div>}
                                         </div>
                                         <div className="text-lg font-black text-slate-800 tracking-tight mb-2 truncate" title={job.product_code}>{job.product_code}</div>
-                                        <div className="flex items-center gap-1.5 mb-3"><span className="flex items-center justify-center w-5 h-5 rounded bg-slate-800 text-white font-bold text-[10px]">L{job.extruder_line}</span><span className="text-xs font-semibold text-slate-500">Source Extruder</span></div>
+                                        <div className="flex flex-col gap-1 mb-3">
+                                            <div className="flex items-center gap-1.5"><span className="flex items-center justify-center w-5 h-5 rounded bg-slate-800 text-white font-bold text-[10px]">L{job.extruder_line}</span><span className="text-xs font-semibold text-slate-500">Source Extruder</span></div>
+                                            {job.batch_no && <div className="text-[11px] font-medium text-slate-500 flex items-center gap-1"><Barcode size={12}/> Batch: {job.batch_no}</div>}
+                                        </div>
                                     </div>
                                     <div className="pt-3 border-t border-slate-100 flex justify-between items-end">
                                         <div><div className="text-[9px] text-slate-400 font-bold uppercase tracking-wide">Target Output</div><div className="text-base font-black text-slate-800">{job.target_kg} <span className="text-xs text-slate-400 font-medium">Kg</span></div></div>
@@ -239,11 +259,10 @@ export default function StartJobForm({ millLine, pendingJobs, onBack, onJoinJob,
                     )}
 
                     {selectedJobId && !isManualMode && (
-                        <div className="fixed bottom-0 left-0 right-0 p-4 md:p-6 bg-white/95 backdrop-blur-md border-t shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-50 animate-in slide-in-from-bottom-10">
+                        <div className="fixed bottom-0 left-0 right-0 p-4 md:p-6 bg-white border-t shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-50 animate-in slide-in-from-bottom-10">
                             <div className="max-w-5xl mx-auto flex flex-col gap-4">
-                                
-                                {/* ✅ 5. เพิ่มฟอร์มกรอก Machine Condition (โหมด Central Pool) */}
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 border-b border-slate-100 pb-4">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 border-b border-slate-100 pb-4 items-end">
+                                    {/* ✅ ลบช่องกรอก Batch ออกไปแล้ว */}
                                     <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Feeder Set (rpm)</label><input type="number" step="any" required value={feederSet} onChange={(e)=>setFeederSet(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-bold focus:ring-2 focus:ring-purple-200 outline-none text-slate-700"/></div>
                                     <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Separator Set (rpm)</label><input type="number" step="any" required value={separatorSet} onChange={(e)=>setSeparatorSet(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-bold focus:ring-2 focus:ring-purple-200 outline-none text-slate-700"/></div>
                                     <div><label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Rotor Set (rpm)</label><input type="number" step="any" required value={rotorSet} onChange={(e)=>setRotorSet(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-bold focus:ring-2 focus:ring-purple-200 outline-none text-slate-700"/></div>

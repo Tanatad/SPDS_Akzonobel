@@ -1,0 +1,16 @@
+version: '3.8'
+services:
+  spds_db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: spds_admin
+      POSTGRES_PASSWORD: AkzoNobel
+      POSTGRES_DB: spds_local
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

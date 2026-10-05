@@ -11,10 +11,19 @@ class ExtruderJob(Base):
     __tablename__ = "extruder_jobs"
     job_id = Column(Integer, primary_key=True, index=True)
     created_at = Column(DateTime, default=datetime.datetime.now)
-    po_no = Column(String, index=True); product_code = Column(String); operator_name = Column(String)
-    extruder_line = Column(Integer); planned_mill_line = Column(Integer)
-    target_pots = Column(Float, default=0.0); target_kg = Column(Float, default=0.0)
+    po_no = Column(String, index=True)
+    batch_no = Column(String, nullable=True)  # ✅ เพิ่ม Batch No.
+    product_code = Column(String)
+    operator_name = Column(String)
+    extruder_line = Column(Integer)
+    planned_mill_line = Column(Integer)
+    target_pots = Column(Float, default=0.0)
+    target_kg = Column(Float, default=0.0)
     status = Column(String, default='IN_PROGRESS')
+    
+    # ✅ เพิ่มคอลัมน์เก็บข้อมูล QAPD
+    qapd_status = Column(String, nullable=True) 
+    qapd_remark = Column(String, nullable=True) 
     
     warmups = relationship("WarmupLog", back_populates="job")
     setups = relationship("SetupLog", back_populates="job")
@@ -82,8 +91,14 @@ class User(Base):
 class MillJob(Base):
     __tablename__ = "mill_jobs"
     job_id = Column(Integer, primary_key=True, index=True)
-    extruder_job_id = Column(Integer, ForeignKey("extruder_jobs.job_id"))
+    extruder_job_id = Column(Integer, ForeignKey("extruder_jobs.job_id"), nullable=True)
     mill_line = Column(Integer)
+    po_no = Column(String, nullable=True)
+    batch_no = Column(String, nullable=True) # ✅ เพิ่ม Batch No.
+    product_code = Column(String, nullable=True)
+    operator_name = Column(String, nullable=True)
+    target_pots = Column(Float, default=0.0)
+    target_kg = Column(Float, default=0.0)
     box_weight = Column(Integer) 
     status = Column(String, default='IN_PROGRESS') 
     created_at = Column(DateTime, default=datetime.datetime.now)

@@ -26,6 +26,7 @@ class TransferJobRequest(BaseModel):
 
 class MillManualStartRequest(BaseModel):
     po_no: str
+    batch_no: Optional[str] = None
     product_code: str
     target_kg: float
     mill_line: int
@@ -102,8 +103,21 @@ async def get_pending_jobs(mill_line: int, db: AsyncSession = Depends(database.g
 @router.post("/mill/job/start")
 async def start_mill_job(req: MillStartRequest, db: AsyncSession = Depends(database.get_db)):
     try:
+        # ✅ 1. ค้นหางานของ Extruder ต้นทางจาก Database
+        ex_job = (await db.execute(select(models.ExtruderJob).filter(models.ExtruderJob.job_id == req.extruder_job_id))).scalars().first()
+        
+        if not ex_job:
+            raise Exception("ไม่พบงานต้นทางจาก Extruder")
+            
+        # ✅ 2. สร้างงาน Mill โดยลอกข้อมูล (PO, Batch, Product) มาจาก ExtruderJob อัตโนมัติ
         new_job = models.MillJob(
             extruder_job_id=req.extruder_job_id,
+            po_no=ex_job.po_no,
+            batch_no=ex_job.batch_no,           # 🔥 สืบทอด Batch No มาจาก Extruder ทันที!
+            product_code=ex_job.product_code,
+            operator_name=ex_job.operator_name,
+            target_pots=ex_job.target_pots,
+            target_kg=ex_job.target_kg,
             mill_line=req.mill_line,
             box_weight=req.box_weight,
             feeder_set=req.feeder_set,
@@ -114,14 +128,15 @@ async def start_mill_job(req: MillStartRequest, db: AsyncSession = Depends(datab
         )
         db.add(new_job)
         
-        ex_job = (await db.execute(select(models.ExtruderJob).filter(models.ExtruderJob.job_id == req.extruder_job_id))).scalars().first()
-        if ex_job: ex_job.status = 'IN_PROCESS_MILL' 
+        # 3. อัปเดตสถานะงาน Extruder ว่ากำลังโดนเครื่อง Mill บดอยู่
+        ex_job.status = 'IN_PROCESS_MILL' 
             
         await db.commit()
         await db.refresh(new_job)
-        return {"job_id": new_job.job_id} # ✅ ส่งแค่ job_id กลับไป ป้องกัน Error จาก Pydantic
+        return {"job_id": new_job.job_id} 
     except Exception as e:
         await db.rollback()
+        print(f"Start Mill Job Error: {e}") # 💡 ปริ้น Error ใน Terminal เผื่อเช็ค
         raise HTTPException(status_code=500, detail="ระบบขัดข้อง ไม่สามารถดึงงานได้")
 
 # ✅ API สำหรับสร้างงานด้วยมือ (อัปเกรดระบบ Rollback ถ้าเซฟพังให้ยกเลิกทั้งหมด)
@@ -142,6 +157,7 @@ async def start_manual_mill_job(req: MillManualStartRequest, db: AsyncSession = 
         # 2. สร้างหัวบิลจำลอง (ใช้ flush เพื่อไม่ให้เซฟจริงจนกว่าจะสำเร็จครบทุกขั้นตอน)
         mock_extruder_job = models.ExtruderJob(
             po_no=po_formatted,
+            batch_no=req.batch_no,
             product_code=req.product_code.strip().upper(),
             operator_name="Manual Entry (Mill)",
             extruder_line=0,
@@ -156,6 +172,8 @@ async def start_manual_mill_job(req: MillManualStartRequest, db: AsyncSession = 
         # 3. สร้าง Mill Job โดยผูกกับหัวบิลตะกี้
         new_mill_job = models.MillJob(
             extruder_job_id=mock_extruder_job.job_id,
+            po_no=po_formatted,
+            batch_no=req.batch_no,
             mill_line=req.mill_line,
             box_weight=req.box_weight,
             feeder_set=req.feeder_set,
@@ -198,6 +216,7 @@ async def get_active_mill_job(mill_line: int, db: AsyncSession = Depends(databas
         "separator_set": active_job.separator_set,
         "rotor_set": active_job.rotor_set,
         "air_flow_set": active_job.air_flow_set,
+        "mill_line": active_job.mill_line,
         "setup_logs": setup_logs,
         "production_logs": prod_logs
     }
@@ -307,3 +326,19 @@ async def finish_mill_job(job_id: int, db: AsyncSession = Depends(database.get_d
     if ex_job: ex_job.status = 'COMPLETED'
     await db.commit()
     return {"msg": "Job Finished"}
+
+# ✅ เพิ่ม API สำหรับการกด Leave Job (ออกจากงานกลางคันโดยไม่เปลี่ยนสถานะให้เป็น COMPLETED)
+@router.post("/mill/job/leave/{job_id}")
+async def leave_mill_job(job_id: int, db: AsyncSession = Depends(database.get_db)):
+    mill_job = (await db.execute(select(models.MillJob).filter(models.MillJob.job_id == job_id))).scalars().first()
+    if not mill_job: 
+        raise HTTPException(404, "Job not found")
+    
+    # ⚠️ การ Leave Job มักจะไม่มีการทำอะไรกับ Database นอกจากการบอกหน้าจอว่า "ฉันออกแล้วนะ" 
+    # แต่ถ้าคุณไนซ์อยากให้สถานะกลับไปเป็น WAITING_MILL เพื่อให้คนอื่นมาดึงไปทำต่อ สามารถเอาคอมเมนต์ด้านล่างออกได้ครับ:
+    # mill_job.status = 'WAITING_MILL'
+    # ex_job = (await db.execute(select(models.ExtruderJob).filter(models.ExtruderJob.job_id == mill_job.extruder_job_id))).scalars().first()
+    # if ex_job: ex_job.status = 'WAITING_MILL'
+    # await db.commit()
+    
+    return {"msg": "Left Job Successfully"}

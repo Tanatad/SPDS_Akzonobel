@@ -1,7 +1,7 @@
 // app/dashboard/history/components/HistoryTable.tsx
 import { Loader2, Timer, Zap, Eye, ChevronLeft, ChevronRight } from 'lucide-react';
 import { fmtDate, fmtNum, calcThroughput, getJobDuration } from '../utils';
-import { StatusBadge } from './UIComponents';
+import { StatusBadge, QapdBadge } from './UIComponents'; // ✅ Import QapdBadge
 
 export default function HistoryTable({ data, isLoading, isFetching, page, setPage, totalPages, setSelectedJob }: any) {
     return (
@@ -10,13 +10,19 @@ export default function HistoryTable({ data, isLoading, isFetching, page, setPag
                 <table className="w-full text-left border-collapse">
                     <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-200 tracking-wider">
                         <tr>
-                            <th className="px-6 py-4">Date</th><th className="px-6 py-4">Job Details</th><th className="px-6 py-4">Extruder Out (Kg)</th>
-                            <th className="px-6 py-4">Mill Out (Kg)</th><th className="px-6 py-4 text-center">Status</th><th className="px-6 py-4 text-center">Action</th>
+                            <th className="px-6 py-4">Date</th>
+                            <th className="px-6 py-4">Job Details</th>
+                            <th className="px-6 py-4">Extruder Out (Kg)</th>
+                            <th className="px-6 py-4">Mill Out (Kg)</th>
+                            <th className="px-6 py-4 text-center">Status</th>
+                            {/* ✅ เพิ่มคอลัมน์ QA Result */}
+                            <th className="px-6 py-4 text-center">QA Result</th>
+                            <th className="px-6 py-4 text-center">Action</th>
                         </tr>
                     </thead>
                     <tbody className="text-sm divide-y divide-slate-100 relative">
-                        {isLoading ? (<tr><td colSpan={6} className="p-20 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-500"/></td></tr>) : 
-                        data.length === 0 ? (<tr><td colSpan={6} className="p-16 text-center text-slate-400">No records found.</td></tr>) :
+                        {isLoading ? (<tr><td colSpan={7} className="p-20 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-500"/></td></tr>) : 
+                        data.length === 0 ? (<tr><td colSpan={7} className="p-16 text-center text-slate-400">No records found.</td></tr>) :
                         data.map((job: any) => {
                             const extPots = job.productions?.reduce((s:number,p:any)=>s+(p.pot_qty||0),0) || 0;
                             const extKg = extPots * 100;
@@ -40,16 +46,15 @@ export default function HistoryTable({ data, isLoading, isFetching, page, setPag
                                             <div className="flex items-center gap-2">
                                                 <span className="bg-orange-50 text-orange-700 px-2 py-1 rounded text-[10px] font-bold border">L{job.extruder_line}</span>
                                                 <span className="font-bold text-slate-700">{fmtNum(extKg)} <span className="text-[10px] font-normal">Kg</span></span>
-                                                <span className="text-[10px] text-slate-400">({extPots} pts)</span>
                                             </div>
                                             <div className="text-[10px] font-bold text-orange-600 bg-orange-50 w-fit px-1.5 py-0.5 rounded border flex items-center gap-1"><Zap size={10} className="fill-orange-600"/> {extTp} kg/hr</div>
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
-                                        {job.mill_data ? (
+                                        {job.mill_data || job.mill_logs?.length > 0 ? (
                                             <div className="flex flex-col gap-1">
                                                 <div className="flex items-center gap-2">
-                                                    <span className="bg-purple-50 text-purple-700 px-2 py-1 rounded text-[10px] font-bold border">M{job.mill_data.mill_line}</span>
+                                                    <span className="bg-purple-50 text-purple-700 px-2 py-1 rounded text-[10px] font-bold border">M{job.mill_data?.mill_line || '-'}</span>
                                                     <span className="font-bold text-slate-700">{fmtNum(millKg)} <span className="text-[10px] font-normal">Kg</span></span>
                                                 </div>
                                                 <div className="text-[10px] font-bold text-purple-600 bg-purple-50 w-fit px-1.5 py-0.5 rounded border flex items-center gap-1"><Zap size={10} className="fill-purple-600"/> {millTp} kg/hr</div>
@@ -57,6 +62,10 @@ export default function HistoryTable({ data, isLoading, isFetching, page, setPag
                                         ) : <span className="text-slate-300 italic text-xs pl-2">No Data</span>}
                                     </td>
                                     <td className="px-6 py-4 text-center"><StatusBadge status={job.status}/></td>
+                                    {/* ✅ โชว์ผลลัพธ์ QA */}
+                                    <td className="px-6 py-4 text-center">
+                                        <QapdBadge status={job.qapd_status} remark={job.qapd_remark}/>
+                                    </td>
                                     <td className="px-6 py-4 text-center"><button onClick={() => setSelectedJob(job)} className="px-3 py-1.5 bg-white text-slate-600 rounded-lg hover:text-blue-600 border flex items-center gap-2 mx-auto"><Eye size={14}/> View</button></td>
                                 </tr>
                             );

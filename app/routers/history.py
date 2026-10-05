@@ -1,16 +1,65 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, UploadFile, File, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
-from sqlalchemy import select
-from sqlalchemy import desc, or_, func
+from sqlalchemy import select, desc, or_, func
 from typing import Optional
 import math
 from collections import defaultdict
+import pandas as pd
+import io
 from app.db import database, models
 
 router = APIRouter()
 
-# ✅ API หลักสำหรับ History Page (รองรับ Pagination & Search และแก้บั๊ก 500 แล้ว)
+# ✅ API รับไฟล์ Excel QAPD (เพื่อจับคู่และอัปเดตสถานะ RFT/NRFT)
+@router.post("/history/qapd/upload")
+async def upload_qapd_data(file: UploadFile = File(...), db: AsyncSession = Depends(database.get_db)):
+    try:
+        contents = await file.read()
+        # อ่านชีต "Data 2024-2026" จากไฟล์ที่อัปโหลดมา (ใช้ engine openpyxl)
+        df = pd.read_excel(io.BytesIO(contents), sheet_name="Data 2024-2026", engine='openpyxl')
+        
+        # กรองเอาเฉพาะแถวที่มี Work Order no. ไม่ให้เป็นค่าว่าง
+        df = df.dropna(subset=['Work Order no.'])
+        
+        update_count = 0
+        # วนลูปอ่านข้อมูลทีละแถว
+        for index, row in df.iterrows():
+            po_raw = str(row['Work Order no.']).strip().upper()
+            if not po_raw or po_raw == 'NAN': 
+                continue
+            
+            # เช็คว่าเป็น RFT หรือ NRFT
+            # ใน QAPD ค่า RFT มักจะเป็น 1 หรือ 'RFT'
+            rft_val = row.get('RFT', 0)
+            is_rft = (str(rft_val) == '1' or str(rft_val).strip().upper() == 'RFT')
+            status_str = "RFT" if is_rft else "NRFT"
+            
+            # ถ้าเป็น NRFT ให้ดึงปัญหามาด้วย (จาก ProblemF หรือ Defect (NCR))
+            remark_str = ""
+            if not is_rft:
+                defects = []
+                if pd.notna(row.get('ProblemF')): defects.append(str(row['ProblemF']))
+                if pd.notna(row.get('Defect (NCR)')): defects.append(str(row['Defect (NCR)']))
+                remark_str = " | ".join(defects)
+            
+            # ค้นหางานในระบบที่มี PO ตรงกัน
+            job = (await db.execute(select(models.ExtruderJob).filter(models.ExtruderJob.po_no == po_raw))).scalars().first()
+            if job:
+                # ถ้าเจอ ให้อัปเดตสถานะจาก QAPD ลงไป
+                job.qapd_status = status_str
+                job.qapd_remark = remark_str
+                update_count += 1
+                
+        await db.commit()
+        return {"message": f"อัปเดตข้อมูล QAPD สำเร็จ! จับคู่ได้ทั้งหมด {update_count} รายการ"}
+        
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"เกิดข้อผิดพลาดในการประมวลผลไฟล์: {str(e)}")
+
+
+# ✅ API หลักสำหรับ History Page (รองรับ Pagination & Search และข้อมูล QAPD)
 @router.get("/history/query")
 async def query_history(
     page: int = 1,
@@ -62,7 +111,7 @@ async def query_history(
      .limit(limit) \
      )).unique().scalars().all()
 
-# 5. 🚀 Fetch Mill Data (คืนค่าโครงสร้างดั้งเดิม เพื่อไม่ให้หน้า History หลักพัง)
+    # 5. 🚀 Fetch Mill Data (คืนค่าโครงสร้างดั้งเดิม เพื่อไม่ให้หน้า History หลักพัง)
     mill_map = {}
     if jobs:
         job_ids = [job.job_id for job in jobs]
@@ -92,7 +141,7 @@ async def query_history(
     # 6. Format Result (จับคู่ใน Memory + เพิ่มฟิลด์ใหม่แบบไม่ทำลายของเดิม)
     results = []
     for job in jobs:
-        # แปลงเป็น dict
+        # แปลงเป็น dict (เพื่อให้ง่ายต่อการจัดการ และรวมเอา qapd_status ไปด้วย)
         job_dict = {c.name: getattr(job, c.name) for c in job.__table__.columns}
         
         # ใส่ข้อมูลลูกๆ ของ Extruder กลับเข้าไป

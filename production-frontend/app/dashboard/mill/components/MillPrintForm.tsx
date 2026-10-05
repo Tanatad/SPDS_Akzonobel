@@ -1,4 +1,3 @@
-// app/dashboard/mill/components/MillPrintForm.tsx
 import React from 'react';
 
 export default function MillPrintForm({ jobData }: any) {
@@ -45,6 +44,12 @@ export default function MillPrintForm({ jobData }: any) {
         return d.toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: '2-digit' });
     };
 
+    // ฟังก์ชันแก้ปัญหาทศนิยมบวกลบแล้วมีเศษยาวๆ
+    const formatNumber = (num: any) => {
+        if (num === null || num === undefined || num === '') return '';
+        return parseFloat(Number(num).toFixed(4));
+    };
+
     const getSetupValue = (mainField: string, logField: string) => {
         if (jobData[mainField] !== undefined && jobData[mainField] !== null) {
             return jobData[mainField];
@@ -56,12 +61,25 @@ export default function MillPrintForm({ jobData }: any) {
         return '-';
     };
 
+    // ฟังก์ชันช่วยดึงหมายเหตุ จะดึงจาก Job ก่อน ถ้าไม่มีจะวิ่งหาใน Log ล่าสุดที่ถูกบันทึกไว้
+    const getRemark = (field: string) => {
+        if (jobData[field] && String(jobData[field]).trim() !== '') {
+            return jobData[field];
+        }
+        for (let i = logs.length - 1; i >= 0; i--) {
+            if (logs[i] && logs[i][field] && String(logs[i][field]).trim() !== '') {
+                return logs[i][field];
+            }
+        }
+        return '';
+    };
+
     return (
-        <div id="mill-print-section" className="hidden print:block w-full bg-white text-black font-sans text-[14px] leading-tight">
+        <div id="mill-print-section" className="hidden print:block w-full bg-white text-black font-sans text-[13px] leading-tight">
             
             <style dangerouslySetInnerHTML={{__html: `
                 @media print {
-                    @page { size: A4 portrait; margin: 5mm; }
+                    @page { size: A4 portrait; margin: 4mm; }
                     
                     body { visibility: hidden; background: white !important; }
                     body *:not(:has(#mill-print-section)):not(#mill-print-section):not(#mill-print-section *) {
@@ -82,11 +100,11 @@ export default function MillPrintForm({ jobData }: any) {
                         padding: 0;
                     }
                     .print-table { border-collapse: collapse; width: 100%; }
-                    /* ปรับ Padding ให้อยู่ระดับกลางๆ ไม่เล็กไปไม่ใหญ่ไป */
-                    .print-table th, .print-table td { border: 0.5px solid black !important; padding: 3px 4px !important; }
+                    /* ปรับ Padding ให้แคบลงเพื่อป้องกันไม่ให้ตารางล้นไปหน้า 2 */
+                    .print-table th, .print-table td { border: 0.5px solid black !important; padding: 1.5px 2px !important; }
                     .writing-vertical { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
                     .no-border { border: none !important; }
-                    .page-break-container { page-break-after: always; display: block; width: 100%; }
+                    .page-break-container { page-break-after: always; display: block; width: 100%; overflow: hidden; }
                     .page-break-container:last-child { page-break-after: auto; }
                 }
             `}} />
@@ -102,7 +120,7 @@ export default function MillPrintForm({ jobData }: any) {
                         
                         <div className="flex justify-end mb-1">
                             <div className="flex flex-col items-start w-[170px]">
-                                <div className="flex gap-5 text-[14px] mb-1.5 font-medium">
+                                <div className="flex gap-5 text-[13px] mb-1 font-medium">
                                     <div className="flex items-center gap-1.5">
                                         <div className="w-3 h-3 border-[0.5px] border-black flex items-center justify-center"></div> EOL
                                     </div>
@@ -112,7 +130,7 @@ export default function MillPrintForm({ jobData }: any) {
                                         </div> Manual
                                     </div>
                                 </div>
-                                <table className="border-collapse border-[0.5px] border-black text-[14px] w-full">
+                                <table className="border-collapse border-[0.5px] border-black text-[13px] w-full">
                                     <tbody>
                                         <tr>
                                             <td className="border-[0.5px] border-black px-2 py-0.5 text-center">PO No. :</td>
@@ -123,11 +141,10 @@ export default function MillPrintForm({ jobData }: any) {
                             </div>
                         </div>
 
-                        <div className="text-center text-2xl font-bold mb-2 tracking-wide mt-[-20px]">
+                        <div className="text-center text-xl font-bold mb-1 tracking-wide mt-[-10px]">
                             ใบบันทึกการบดสี
                         </div>
 
-                        {/* ขนาดฟอนต์ตารางที่ 13px จะพอดีสวยสำหรับ 16 คอลัมน์ในกระดาษ A4 */}
                         <table className="w-full border-collapse print-table text-center text-[13px]">
                             <colgroup>
                                 <col className="w-[3%]" />
@@ -150,19 +167,19 @@ export default function MillPrintForm({ jobData }: any) {
 
                             <tbody className="font-normal text-black">
                                 <tr>
-                                    <td rowSpan={2} colSpan={2} className="py-[3px] text-center">Mill no.</td>
+                                    <td rowSpan={2} colSpan={2} className="py-[2px] text-center">Mill no.</td>
                                     <td rowSpan={2} className="text-[16px] font-bold text-center">{jobData.mill_data?.mill_line || jobData.mill_line || '-'}</td>
                                     <td rowSpan={2} className="text-center pr-1 leading-tight align-middle">รหัสสี :</td>
                                     <td rowSpan={2} className="text-[15px] leading-tight font-bold align-middle text-center">{jobData.product_code}</td>
                                     <td colSpan={2} className="text-center">Batch No. :</td>
-                                    <td colSpan={3} className="font-bold text-center">-</td>
+                                    <td colSpan={3} className="font-bold text-center text-[15px]">{jobData.batch_no || '-'}</td>
                                     <td colSpan={3} className="text-center">จำนวนการผลิต :</td>
                                     <td colSpan={2} className="font-bold text-center">{jobData.target_pots || '-'} ถัง</td>
                                     <td className="font-bold text-center">{jobData.target_kg?.toLocaleString()} Kg.</td>
                                 </tr>
                                 
                                 <tr>
-                                    <td colSpan={11} className="py-[3px] text-center">ถังที่ (Granule bin / Setup bin)</td>
+                                    <td colSpan={11} className="py-[2px] text-center">ถังที่ (Granule bin / Setup bin)</td>
                                 </tr>
 
                                 <tr>
@@ -228,7 +245,7 @@ export default function MillPrintForm({ jobData }: any) {
                                     <td className="text-center">rpm</td>
                                     <td className="text-center">-200,+200</td>
                                     <td className="font-bold text-center">{getSetupValue('feeder_set', 'feeder_rpm')}</td>
-                                    {columns.map((log, i) => <td key={i} className="text-center">{log?.feeder_rpm ?? ''}</td>)}
+                                    {columns.map((log, i) => <td key={i} className="text-center">{formatNumber(log?.feeder_rpm)}</td>)}
                                     <td className="!border-none !bg-transparent text-transparent"></td>
                                 </tr>
                                 <tr>
@@ -236,7 +253,7 @@ export default function MillPrintForm({ jobData }: any) {
                                     <td className="text-center">rpm</td>
                                     <td className="text-center">-200,+200</td>
                                     <td className="font-bold text-center">{getSetupValue('separator_set', 'separator_rpm')}</td>
-                                    {columns.map((log, i) => <td key={i} className="text-center">{log?.separator_rpm ?? ''}</td>)}
+                                    {columns.map((log, i) => <td key={i} className="text-center">{formatNumber(log?.separator_rpm)}</td>)}
                                     <td className="!border-none !bg-transparent text-transparent"></td>
                                 </tr>
                                 <tr>
@@ -244,7 +261,7 @@ export default function MillPrintForm({ jobData }: any) {
                                     <td className="text-center">rpm</td>
                                     <td className="text-center">-200,+200</td>
                                     <td className="font-bold text-center">{getSetupValue('rotor_set', 'rotor_rpm')}</td>
-                                    {columns.map((log, i) => <td key={i} className="text-center">{log?.rotor_rpm ?? ''}</td>)}
+                                    {columns.map((log, i) => <td key={i} className="text-center">{formatNumber(log?.rotor_rpm)}</td>)}
                                     <td className="!border-none !bg-transparent text-transparent"></td>
                                 </tr>
                                 <tr>
@@ -252,7 +269,7 @@ export default function MillPrintForm({ jobData }: any) {
                                     <td className="text-center">m3/min</td>
                                     <td className="text-center">-5,+5</td>
                                     <td className="font-bold text-center">{getSetupValue('air_flow_set', 'air_flow')}</td>
-                                    {columns.map((log, i) => <td key={i} className="text-center">{log?.air_flow ?? ''}</td>)}
+                                    {columns.map((log, i) => <td key={i} className="text-center">{formatNumber(log?.air_flow)}</td>)}
                                     <td className="!border-none !bg-transparent text-transparent"></td>
                                 </tr>
                                 <tr>
@@ -260,7 +277,7 @@ export default function MillPrintForm({ jobData }: any) {
                                     <td className="text-center">°C</td>
                                     <td className="text-center">&lt;= 15</td>
                                     <td className="text-center">-</td>
-                                    {columns.map((log, i) => <td key={i} className="text-center">{log?.inlet_temp ?? ''}</td>)}
+                                    {columns.map((log, i) => <td key={i} className="text-center">{formatNumber(log?.inlet_temp)}</td>)}
                                     <td className="!border-none !bg-transparent text-transparent"></td>
                                 </tr>
                                 <tr>
@@ -268,7 +285,7 @@ export default function MillPrintForm({ jobData }: any) {
                                     <td className="text-center">°C</td>
                                     <td className="text-center">&lt;= 32</td>
                                     <td className="text-center">-</td>
-                                    {columns.map((log, i) => <td key={i} className="text-center">{log?.outlet_temp ?? ''}</td>)}
+                                    {columns.map((log, i) => <td key={i} className="text-center">{formatNumber(log?.outlet_temp)}</td>)}
                                     <td className="!border-none !bg-transparent text-transparent"></td>
                                 </tr>
                                 <tr>
@@ -276,7 +293,7 @@ export default function MillPrintForm({ jobData }: any) {
                                     <td className="text-center">°C</td>
                                     <td className="text-center">&lt; 32</td>
                                     <td className="text-center">-</td>
-                                    {columns.map((log, i) => <td key={i} className="text-center">{log?.fg_temp ?? ''}</td>)}
+                                    {columns.map((log, i) => <td key={i} className="text-center">{formatNumber(log?.fg_temp)}</td>)}
                                     <td className="!border-none !bg-transparent text-transparent"></td>
                                 </tr>
                                 
@@ -302,8 +319,8 @@ export default function MillPrintForm({ jobData }: any) {
                                 <tr>
                                     <td colSpan={3} className="text-center">ปริมาณ OVS (kg.)</td>
                                     <td colSpan={2} className="text-center">ทุกถัง</td>
-                                    {columns.map((log, i) => <td key={i} className="text-center">{log?.ovs_kg ?? ''}</td>)}
-                                    <td className="text-center">{pageTotalOvs > 0 ? pageTotalOvs.toFixed(2) : ''}</td>
+                                    {columns.map((log, i) => <td key={i} className="text-center">{formatNumber(log?.ovs_kg)}</td>)}
+                                    <td className="text-center">{pageTotalOvs > 0 ? formatNumber(pageTotalOvs) : ''}</td>
                                 </tr>
 
                                 <tr>
@@ -316,25 +333,25 @@ export default function MillPrintForm({ jobData }: any) {
                                 <tr>
                                     <td colSpan={3} className="text-center">น้ำหนัก Additive ก่อนบด (A)</td>
                                     <td className="text-center">Kg.</td>
-                                    {columns.map((log, i) => <td key={i} className="text-center">{log?.add_before_grind_a ?? ''}</td>)}
+                                    {columns.map((log, i) => <td key={i} className="text-center">{formatNumber(log?.add_before_grind_a)}</td>)}
                                     <td className="!border-none !bg-transparent text-transparent"></td>
                                 </tr>
                                 <tr>
                                     <td colSpan={3} className="text-center">น้ำหนัก Additive หลังบด (B)</td>
                                     <td className="text-center">Kg.</td>
-                                    {columns.map((log, i) => <td key={i} className="text-center">{log?.add_after_grind_b ?? ''}</td>)}
+                                    {columns.map((log, i) => <td key={i} className="text-center">{formatNumber(log?.add_after_grind_b)}</td>)}
                                     <td className="!border-none !bg-transparent text-transparent"></td>
                                 </tr>
                                 <tr>
                                     <td colSpan={3} className="text-center">น้ำหนัก Additive ที่ใช้ (A - B)</td>
                                     <td className="text-center">Kg.</td>
-                                    {columns.map((log, i) => <td key={i} className="text-center">{log?.add_used_diff ?? ''}</td>)}
-                                    <td className="text-center">{pageTotalAdditive > 0 ? pageTotalAdditive.toFixed(2) : ''}</td>
+                                    {columns.map((log, i) => <td key={i} className="text-center">{formatNumber(log?.add_used_diff)}</td>)}
+                                    <td className="text-center">{pageTotalAdditive > 0 ? formatNumber(pageTotalAdditive) : ''}</td>
                                 </tr>
                                 <tr>
                                     <td colSpan={3} className="text-center">อัตราการป้อน</td>
                                     <td className="text-center">kg/h</td>
-                                    {columns.map((log, i) => <td key={i} className="text-center">{log?.feed_rate_kg_h ?? ''}</td>)}
+                                    {columns.map((log, i) => <td key={i} className="text-center">{formatNumber(log?.feed_rate_kg_h)}</td>)}
                                     <td className="!border-none !bg-transparent text-transparent"></td>
                                 </tr>
 
@@ -359,14 +376,14 @@ export default function MillPrintForm({ jobData }: any) {
                                 </tr>
 
                                 <tr>
-                                    <td colSpan={5} className="text-center py-1.5 font-medium text-[13px]">พนักงานบดสี</td>
+                                    <td colSpan={5} className="text-center py-1 font-medium text-[13px]">พนักงานบดสี</td>
                                     {columns.map((log, i) => <td key={i} className="italic text-slate-700 text-[12px] leading-tight text-center">{log ? jobData.operator_name || '' : ''}</td>)}
                                     <td></td>
                                 </tr>
                             </tbody>
                         </table>
 
-                        <div className="mt-2 flex justify-between text-[13px] mb-2 font-medium">
+                        <div className="mt-1 flex justify-between text-[12px] mb-1 font-medium">
                             <div>เศษ: ______________ kg</div>
                             <div>Dust: ______________ kg</div>
                             <div>Over sieve: ______________ kg</div>
@@ -374,58 +391,57 @@ export default function MillPrintForm({ jobData }: any) {
                             <div>รวม Dust กระจายผสม: ______________ kg</div>
                         </div>
 
-                        {/* ปรับ Row Height ลงมาให้กำลังดี ไม่ล้นกระดาษ */}
-                        <table className="w-full mt-1 text-[13px] leading-tight border-collapse border-0">
+                        <table className="w-full text-[13px] leading-tight border-collapse border-0">
                             <tbody>
-                                <tr className="h-[22px]">
+                                <tr className="h-[20px]">
                                     <td colSpan={2} className="align-bottom border-0 pb-0.5 pr-3">
                                         <div className="flex items-end w-full">
                                             <span className="whitespace-nowrap font-bold">หมายเหตุ (คุณภาพ):</span>
-                                            <span className="flex-1 border-b-[0.5px] border-black ml-1 text-slate-800 px-2 pb-0.5">{logs[0]?.remark_quality || ''}</span>
+                                            <span className="flex-1 border-b-[0.5px] border-black ml-1 text-slate-800 px-2 pb-0.5">{getRemark('remark_quality')}</span>
                                         </div>
                                     </td>
-                                    <td rowSpan={9} className="w-[30%] border-[0.5px] border-black align-top p-2 relative bg-slate-50/20">
-                                        <div className="text-center w-full mb-1 font-bold text-[14px]">ตรวจสอบเอกสาร</div>
-                                        <div className="absolute bottom-3 left-0 right-0 flex flex-col items-center">
-                                            <div className="border-b-[0.5px] border-black w-4/5 mb-1.5 h-6"></div>
-                                            <div className="font-medium">( หัวหน้างานผลิต )</div>
+                                    <td rowSpan={9} className="w-[30%] border-[0.5px] border-black align-top p-1 relative bg-slate-50/20">
+                                        <div className="text-center w-full mb-0.5 font-bold text-[13px]">ตรวจสอบเอกสาร</div>
+                                        <div className="absolute bottom-2 left-0 right-0 flex flex-col items-center">
+                                            <div className="border-b-[0.5px] border-black w-4/5 mb-1 h-6"></div>
+                                            <div className="font-medium text-[12px]">( หัวหน้างานผลิต )</div>
                                         </div>
                                     </td>
                                 </tr>
-                                <tr className="h-[18px]"><td colSpan={2} className="border-b-[0.5px] border-black border-x-0 border-t-0 border-r-transparent"></td></tr>
-                                <tr className="h-[18px]"><td colSpan={2} className="border-b-[0.5px] border-black border-x-0 border-t-0 border-r-transparent"></td></tr>
+                                <tr className="h-[14px]"><td colSpan={2} className="border-b-[0.5px] border-black border-x-0 border-t-0 border-r-transparent"></td></tr>
+                                <tr className="h-[14px]"><td colSpan={2} className="border-b-[0.5px] border-black border-x-0 border-t-0 border-r-transparent"></td></tr>
                                 
-                                <tr className="h-[22px]">
-                                    <td colSpan={2} className="align-bottom border-0 pb-0.5 pt-1 pr-3">
+                                <tr className="h-[20px]">
+                                    <td colSpan={2} className="align-bottom border-0 pb-0.5 pt-0.5 pr-3">
                                         <div className="flex items-end w-full">
                                             <span className="whitespace-nowrap font-bold">หมายเหตุ (เครื่องจักร):</span>
-                                            <span className="flex-1 border-b-[0.5px] border-black ml-1 text-slate-800 px-2 pb-0.5">{logs[0]?.remark_machine || ''}</span>
+                                            <span className="flex-1 border-b-[0.5px] border-black ml-1 text-slate-800 px-2 pb-0.5">{getRemark('remark_machine')}</span>
                                         </div>
                                     </td>
                                 </tr>
-                                <tr className="h-[18px]"><td colSpan={2} className="border-b-[0.5px] border-black border-x-0 border-t-0 border-r-transparent"></td></tr>
-                                <tr className="h-[18px]"><td colSpan={2} className="border-b-[0.5px] border-black border-x-0 border-t-0 border-r-transparent"></td></tr>
+                                <tr className="h-[14px]"><td colSpan={2} className="border-b-[0.5px] border-black border-x-0 border-t-0 border-r-transparent"></td></tr>
+                                <tr className="h-[14px]"><td colSpan={2} className="border-b-[0.5px] border-black border-x-0 border-t-0 border-r-transparent"></td></tr>
                                 
-                                <tr className="h-[22px]">
-                                    <td colSpan={2} className="align-bottom border-0 pb-0.5 pt-1 pr-3">
+                                <tr className="h-[20px]">
+                                    <td colSpan={2} className="align-bottom border-0 pb-0.5 pt-0.5 pr-3">
                                         <div className="flex items-end w-full">
                                             <span className="whitespace-nowrap font-bold">หมายเหตุ (อื่นๆ):</span>
-                                            <span className="flex-1 border-b-[0.5px] border-black ml-1 text-slate-800 px-2 pb-0.5">{logs[0]?.remark_other || ''}</span>
+                                            <span className="flex-1 border-b-[0.5px] border-black ml-1 text-slate-800 px-2 pb-0.5">{getRemark('remark_other')}</span>
                                         </div>
                                     </td>
                                 </tr>
-                                <tr className="h-[18px]"><td colSpan={2} className="border-b-[0.5px] border-black border-x-0 border-t-0 border-r-transparent"></td></tr>
-                                <tr className="h-[18px]"><td colSpan={2} className="border-b-[0.5px] border-black border-x-0 border-t-0 border-r-transparent"></td></tr>
+                                <tr className="h-[14px]"><td colSpan={2} className="border-b-[0.5px] border-black border-x-0 border-t-0 border-r-transparent"></td></tr>
+                                <tr className="h-[14px]"><td colSpan={2} className="border-b-[0.5px] border-black border-x-0 border-t-0 border-r-transparent"></td></tr>
                             </tbody>
                         </table>
                         
-                        <div className="flex justify-between items-end mt-2 text-[12px]">
+                        <div className="flex justify-between items-end mt-1 text-[11px]">
                             <div className="space-y-0.5">
                                 <div className="font-bold underline">Remark :</div>
                                 <div>1. ในระหว่างการผลิต หัวหน้างานสามารถแก้ไขเปลี่ยนแปลง Condition การบดได้ เพื่อแก้ไขปัญหาคุณภาพ</div>
                                 <div>2. เมื่อผลิตจบให้เอาสติ๊กเกอร์ที่เหลือส่งคืนที่ออฟฟิศฝ่ายผลิตพร้อมกับเอกสารการบดสี</div>
                             </div>
-                            <div className="text-[13px] font-bold pr-2">
+                            <div className="text-[12px] font-bold pr-2">
                                 FM-PP-03 Rev.20 แผ่นที่ {pageIndex + 1}
                             </div>
                         </div>

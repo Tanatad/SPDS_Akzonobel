@@ -2,10 +2,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useQuery, keepPreviousData } from '@tanstack/react-query';
+// ✅ Import useQueryClient
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import api from '@/lib/api';
 import * as XLSX from 'xlsx';
-import { FileText, Search, Calendar, Flame, Settings, RotateCcw, Loader2, Download } from 'lucide-react';
+// ✅ เพิ่ม UploadCloud
+import { FileText, Search, Calendar, Flame, Settings, RotateCcw, Loader2, Download, UploadCloud } from 'lucide-react';
 
 import { fmtDateTime, calcThroughput, getJobDuration, getSortedExtruderCols, getSortedMillCols, getRange, getRemarks } from './utils';
 import HistoryTable from './components/HistoryTable';
@@ -32,6 +34,10 @@ export default function HistoryPage() {
   const [endDate, setEndDate] = useState('');
   const [selExtLine, setSelExtLine] = useState(''); 
   const [selMillLine, setSelMillLine] = useState('');
+  
+  // ✅ เพิ่ม state และ QueryClient
+  const [isUploading, setIsUploading] = useState(false);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
       setPage(1);
@@ -56,10 +62,34 @@ export default function HistoryPage() {
   const data = queryData?.items || [];
   const totalPages = queryData?.total_pages || 1;
 
+  // ✅ ฟังก์ชันส่งไฟล์ Excel ให้ Backend ช่วย Map
+  const handleUploadQAPD = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      setIsUploading(true);
+      try {
+          const res = await api.post('/history/qapd/upload', formData, {
+              headers: { 'Content-Type': 'multipart/form-data' }
+          });
+          alert(res.data?.message || "อัปเดตข้อมูล QAPD สำเร็จ!");
+          // รีเฟรชตารางใหม่เพื่อให้ป้ายแสดง
+          queryClient.invalidateQueries({ queryKey: ['historyList'] });
+      } catch (err: any) {
+          console.error(err);
+          alert(`เกิดข้อผิดพลาดในการอัปโหลดไฟล์: ${err.response?.data?.detail || "System Error"}`);
+      } finally {
+          setIsUploading(false);
+          e.target.value = ''; // รีเซ็ต Input
+      }
+  };
+
   const handleExportExcel = () => {
       if (data.length === 0) return alert("No data to export!");
 
-      // ✅ แก้ Error ที่ 1: ระบุ Type เป็น (job: any)
       const exportData = data.map((job: any) => {
           const duration = getJobDuration(job);
           const extLogs = getSortedExtruderCols(job);
@@ -75,6 +105,8 @@ export default function HistoryPage() {
               "Product Code": job.product_code,
               "Operator": job.operator_name || '-',
               "Status": job.status,
+              "QA Status": job.qapd_status || 'Pending', // ✅ ส่งออก Excel
+              "QA Remark": job.qapd_remark || '-',
               "Target (Kg)": job.target_kg,
               
               "Ext Line": job.extruder_line,
@@ -128,7 +160,6 @@ export default function HistoryPage() {
                   <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Production History</h1>
                   <p className="text-slate-500 text-sm font-medium flex items-center gap-2">
                       Archive of all manufacturing jobs & logs
-                      {/* ✅ แก้ Error ที่ 2: เอา <span> มาครอบ title แทนที่จะใส่ใน Loader2 ตรงๆ */}
                       {isFetching && !isLoading && (
                           <span title="Updating Data...">
                               <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />
@@ -137,9 +168,18 @@ export default function HistoryPage() {
                   </p>
               </div>
           </div>
-          <button onClick={handleExportExcel} className="bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-bold shadow-sm shadow-emerald-200 transition-all flex items-center gap-2 active:scale-95">
-              <Download size={18} /> Export Excel
-          </button>
+          {/* ✅ เพิ่มปุ่ม Sync QAPD ขนาบข้าง Export Excel */}
+          <div className="flex items-center gap-3">
+              <label className={`bg-blue-50 hover:bg-blue-100 text-blue-700 px-5 py-2.5 rounded-xl font-bold border border-blue-200 shadow-sm transition-all flex items-center gap-2 cursor-pointer active:scale-95 ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                  {isUploading ? <Loader2 size={18} className="animate-spin" /> : <UploadCloud size={18} />}
+                  {isUploading ? "Syncing..." : "Sync QAPD"}
+                  <input type="file" accept=".xlsx" className="hidden" onChange={handleUploadQAPD} disabled={isUploading} />
+              </label>
+              
+              <button onClick={handleExportExcel} className="bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-bold shadow-sm shadow-emerald-200 transition-all flex items-center gap-2 active:scale-95">
+                  <Download size={18} /> Export
+              </button>
+          </div>
       </div>
 
       <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-200 mb-6 flex flex-col xl:flex-row gap-2 xl:items-center justify-between sticky top-4 z-30">

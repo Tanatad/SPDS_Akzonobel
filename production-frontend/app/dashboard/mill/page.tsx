@@ -1,7 +1,7 @@
 // app/dashboard/mill/page.tsx
 'use client';
 
-import { useState } from 'react'; // ❌ ลบ useEffect ออกไปเลยครับ ไม่ใช้แล้ว
+import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Loader2 } from 'lucide-react';
@@ -9,17 +9,16 @@ import MachineSelection from './components/MachineSelection';
 import StartJobForm from './components/StartJobForm';
 import MillWorkspace from './components/MillWorkspace';
 
-const MILL_LIST = [2, 3, 4, 9, 10, 12, 13];
+const MILL_LIST = [2, 3, 4, 9, 10, 12, 13, 14];
 
 export default function MillPage() {
     const [millLine, setMillLine] = useState<number | null>(null);
     const [workingJobId, setWorkingJobId] = useState<number | null>(null);
     const queryClient = useQueryClient();
 
-
-    // ✅ ดึงข้อมูลงานที่กำลังรัน (ถ้ามีรหัส Join ให้ดึงตามรหัส, ถ้าไม่มีให้เช็คของเครื่องตัวเอง)
+    // ✅ 1. แก้ไข Query Key เปลี่ยนจากการใช้ตัวเลขเดี่ยวๆ เป็นการระบุประเภทให้ชัดเจน ป้องกัน Cache ชนกัน
     const { data: activeJob, refetch: refetchActiveJob, isLoading: isJobLoading } = useQuery({
-        queryKey: ['millJobDetail', workingJobId || millLine],
+        queryKey: ['millJobDetail', workingJobId ? `job-${workingJobId}` : `line-${millLine}`],
         queryFn: async () => {
             try {
                 if (workingJobId) {
@@ -39,7 +38,7 @@ export default function MillPage() {
 
     const currentJobId = activeJob?.job_id;
 
-    // 3. ดึงคิวงานรอเข้าบด
+    // ดึงคิวงานรอเข้าบด
     const { data: pendingJobs = [], refetch: refetchPending } = useQuery({
         queryKey: ['millPendingJobs', millLine],
         queryFn: async () => {
@@ -49,32 +48,48 @@ export default function MillPage() {
                 return res.data || [];
             } catch { return []; }
         },
-        // ✅ เปลี่ยนเงื่อนไขให้ไม่ดึงคิวงาน ถ้าเรากำลังอยู่ในงานบดแล้ว
         enabled: !!millLine && !currentJobId,
         refetchInterval: 10000,
     });
 
-    const isOwner = activeJob?.mill_line === millLine;
+    const isOwner = Number(activeJob?.mill_line) === Number(millLine);
 
     const handleFinishJob = async () => {
         if(!confirm("⚠️ ยืนยันการปิดจบงาน (Finish Job)?\nข้อมูลจะถูกบันทึกและปิด PO นี้ ทุกคนที่ช่วยบดจะหลุดออกจากงาน")) return;
         try {
             await api.post(`/mill/job/finish/${activeJob.job_id}`);
             
+            // ✅ 2. เอา setMillLine(null) ออก เพื่อให้จบงานแล้วเด้งกลับมารอรับงานใหม่ที่เครื่องเดิมทันที
             setWorkingJobId(null);
-            setMillLine(null);
             
-            await queryClient.invalidateQueries({ queryKey: ['millActiveJob'] });
-            await queryClient.invalidateQueries({ queryKey: ['myOwnedMillJob'] });
+            // ✅ 3. สั่งทำลายความจำเก่าทิ้งให้หมด 
+            queryClient.removeQueries({ queryKey: ['millJobDetail'] }); 
             await queryClient.invalidateQueries({ queryKey: ['activeMillPools'] });
             await queryClient.invalidateQueries({ queryKey: ['millPendingJobs'] });
-            await queryClient.invalidateQueries({ queryKey: ['millJobDetail'] });
         } catch (err: any) { alert("เกิดข้อผิดพลาดในการจบงาน โปรดลองใหม่อีกครั้ง"); }
+    };
+
+    const handleLeaveJob = async () => {
+        if(!confirm("🚪 ยืนยันการออกจากการช่วยบด?\nคุณจะกลับไปหน้าคิวงาน โดยที่ PO นี้จะยังคงรันต่อไปที่เครื่องหลัก")) return;
+        
+        try {
+            if (activeJob?.job_id) {
+                await api.post(`/mill/job/leave/${activeJob.job_id}`);
+            }
+
+            // ✅ 4. เอา setMillLine(null) ออกเช่นกัน กดออกปุ๊บ รอช่วยงานอื่นต่อได้เลย
+            setWorkingJobId(null);
+            
+            // ✅ 5. ล้าง Cache ตัวปัญหาทิ้งทันทีที่ก้าวเท้าออกจากงาน
+            queryClient.removeQueries({ queryKey: ['millJobDetail'] }); 
+            await queryClient.invalidateQueries({ queryKey: ['activeMillPools'] });
+        } catch (err: any) {
+            alert("เกิดข้อผิดพลาดในการออกจากงาน: " + (err.response?.data?.detail || err.message));
+        }
     };
 
     if (!millLine) return <MachineSelection millList={MILL_LIST} onSelectLine={setMillLine} />;
 
-    // ✅ Guard ดักโหลดที่นิ่งและเสถียรที่สุด
     if (isJobLoading || (currentJobId && !activeJob)) {
         return (
             <div className="min-h-[70vh] flex flex-col items-center justify-center bg-slate-50 mt-6 rounded-3xl border border-slate-200">
@@ -85,7 +100,6 @@ export default function MillPage() {
         );
     }
 
-    // ✅ ถ้าไม่มีอะไรต้องทำแล้วจริงๆ ค่อยโชว์หน้าคิวงาน
     if (!activeJob && !currentJobId) {
         return (
             <StartJobForm 
@@ -109,19 +123,12 @@ export default function MillPage() {
             millLine={millLine} 
             isOwner={isOwner} 
             onFinish={handleFinishJob} 
-            onLeave={async () => {
-                if(confirm("🚪 ยืนยันการออกจากการช่วยบด?\nคุณจะกลับหน้าเลือกงาน โดยที่ PO นี้จะยังคงรันต่อไปที่เครื่องหลัก")) {
-                    setWorkingJobId(null);
-            setMillLine(null);
-                    await queryClient.invalidateQueries({ queryKey: ['millJobDetail'] });
-                }
-            }}
+            onLeave={handleLeaveJob}
             onSwitchLine={async () => {
+                // ✅ 6. ปุ่มนี้มีไว้สำหรับคนที่อยากเปลี่ยนเครื่องจริงๆ
                 setMillLine(null);
                 setWorkingJobId(null);
-            setMillLine(null);
-                await queryClient.invalidateQueries({ queryKey: ['millJobDetail'] });
-                await queryClient.invalidateQueries({ queryKey: ['myOwnedMillJob'] });
+                queryClient.removeQueries({ queryKey: ['millJobDetail'] });
             }}
             refetchActiveJob={refetchActiveJob} 
         />
